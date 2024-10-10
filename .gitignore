@@ -160,4 +160,10 @@ cython_debug/
 #.idea/
 
 experiments/*
+<<<<<<< HEAD
 scripts/wandb/*
+notebooks/CIFAR-10_bootstrap_dictionary.npy
+notebooks/Oxford-IIIT_Pet_bootstrap_dictionary.npy
+=======
+scripts/wandb/*
+>>>>>>> 3924be401eb2f5787c6ccba0a194be0e99db3ad1
