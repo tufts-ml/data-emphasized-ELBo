@@ -10,6 +10,12 @@ def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
         
+def worker_init_fn(worker_id):
+    # This worker initialization function sets CPU affinity for each worker to 
+    # all available CPUs, significantly improving GPU utilization when using 
+    # num_workers > 0 (see https://github.com/pytorch/pytorch/issues/99625).
+    os.sched_setaffinity(0, range(os.cpu_count()))
+        
 def get_mean_and_std(dataset, indices, dims=(1, 2)):
     
     means, stds = [], []
