@@ -5,6 +5,8 @@ from sklearn.model_selection import train_test_split
 import torch
 import torchvision
 import torchmetrics
+# Importing our custom module(s)
+import layers
 
 def makedir_if_not_exist(directory):
     if not os.path.exists(directory):
@@ -15,7 +17,7 @@ def worker_init_fn(worker_id):
     # all available CPUs, significantly improving GPU utilization when using 
     # num_workers > 0 (see https://github.com/pytorch/pytorch/issues/99625).
     os.sched_setaffinity(0, range(os.cpu_count()))
-        
+    
 def get_mean_and_std(dataset, indices, dims=(1, 2)):
     
     means, stds = [], []
@@ -218,6 +220,25 @@ def get_fgvcaircraft_datasets(dataset_directory, n, tune, random_state):
         test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
         return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
     
+def add_variational_layers(module, sigma_param):
+    for name, child in module.named_children():
+        if isinstance(child, torch.nn.Linear):
+            setattr(module, name, layers.VariationalLinear(child, sigma_param))
+        elif isinstance(child, torch.nn.Conv2d):
+            setattr(module, name, layers.VariationalConv2d(child, sigma_param))
+        elif isinstance(child, torch.nn.BatchNorm2d):
+            setattr(module, name, layers.VariationalBatchNorm2d(child, sigma_param))
+        else:
+            add_variational_layers(child, sigma_param)
+            
+def use_posterior(self, flag):
+    for child in self.modules():
+        if isinstance(child, (layers.VariationalLinear, layers.VariationalConv2d, layers.VariationalBatchNorm2d)):
+            child.use_posterior = flag
+            
+def flatten_params(model, excluded_params=['sigma_param', 'bb_sigma_param', 'clf_sigma_param']):
+    return torch.cat([param.view(-1) for name, param in model.named_parameters() if name not in excluded_params])
+    
 def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10):
 
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
@@ -237,19 +258,23 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
             images, labels = images.to(device), labels.to(device)
 
         model.zero_grad()
-        params = torch.nn.utils.parameters_to_vector(model.parameters())
+        params = flatten_params(model)
         logits = model(images)
         losses = criterion(labels, logits, params, N=len(dataloader.dataset))
         losses['loss'].backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
+        
+        if lr_scheduler:
+            lr_scheduler.step()
 
         metrics['loss'] += batch_size/dataset_size*losses['loss'].item()
         metrics['nll'] += batch_size/dataset_size*losses['nll'].item()
         
-        if lr_scheduler:
-            lr_scheduler.step()
-            
+        # Added for data-emphasized ELBo
+        metrics['lambda_star'] = losses.get('lambda_star')
+        metrics['tau_star'] = losses.get('tau_star')
+                    
         if device.type == 'cuda':
             labels, logits = labels.detach().cpu(), logits.detach().cpu()
 
@@ -282,7 +307,7 @@ def evaluate(model, criterion, dataloader, num_classes=10):
             if device.type == 'cuda':
                 images, labels = images.to(device), labels.to(device)
             
-            params = torch.nn.utils.parameters_to_vector(model.parameters())
+            params = flatten_params(model)
             logits = model(images)
             losses = criterion(labels, logits, params, N=len(dataloader.dataset))
 

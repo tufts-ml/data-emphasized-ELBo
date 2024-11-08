@@ -35,13 +35,13 @@ if __name__=='__main__':
     torch.manual_seed(args.random_state)
     utils.makedir_if_not_exist(args.experiments_directory)
            
-    augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_cifar10_datasets(args.dataset_directory, args.n, args.tune, args.random_state)
+    augmented_train_dataset, train_dataset, val_or_test_dataset = utils.get_oxfordiiit_pet_datasets(args.dataset_directory, args.n, args.tune, args.random_state)
 
     augmented_train_loader = torch.utils.data.DataLoader(augmented_train_dataset, batch_size=min(args.batch_size, len(augmented_train_dataset)), shuffle=True, num_workers=args.num_workers, drop_last=True)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=min(args.batch_size, len(train_dataset)), num_workers=args.num_workers)
     val_or_test_loader = torch.utils.data.DataLoader(val_or_test_dataset, batch_size=args.batch_size, num_workers=args.num_workers)
     
-    num_classes = 10
+    num_classes = 37
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print(device)
         

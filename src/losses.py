@@ -45,13 +45,22 @@ def squared_Mahalanobis_distance_of_Woodbury_matrix_identity(x, mu, A, U, V):
     Y = torch.linalg.inv(C_inv + V_A_inv_U)@V_A_inv
     return ((x-mu)*(1/A))@(x-mu) - ((x-mu)@X)@(Y@(x-mu))
 
+class ERMLoss(torch.nn.Module):
+    def __init__(self, criterion=torch.nn.CrossEntropyLoss()):
+        super().__init__()
+        self.criterion = criterion
+
+    def forward(self, labels, logits, params, N=1):
+        nll = self.criterion(logits, labels)
+        return {'nll': nll, 'loss': nll}
+    
 class L2ZeroLoss(torch.nn.Module):
     def __init__(self, alpha, criterion=torch.nn.CrossEntropyLoss()):
         super().__init__()
         self.alpha = alpha
         self.criterion = criterion
 
-    def forward(self, labels, logits, params):
+    def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
         log_prob = (self.alpha/2) * (params**2).sum()
         return {'nll': nll, 'log_prob': log_prob, 'loss': nll + log_prob}
@@ -65,44 +74,46 @@ class L2SPLoss(torch.nn.Module):
         self.criterion = criterion
         self.D = len(self.bb_loc)
 
-    def forward(self, labels, logits, params):
+    def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
         bb_log_prob = (self.alpha/2) * ((params[:self.D] - self.bb_loc.to(params.device))**2).sum()
         clf_log_prob = (self.beta/2) * (params[self.D:]**2).sum()
         return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll + bb_log_prob + clf_log_prob}
-
+    
 class PTYLLoss(torch.nn.Module):
-    def __init__(self, bb_loc, lambd, Q, Sigma_diag, tau, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
+    def __init__(self, bb_loc, beta, lambd, Q, Sigma_diag, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
         super().__init__()
         self.bb_loc = bb_loc
+        self.beta = beta
         self.criterion = criterion
         self.K = K
-        self.prior_eps = prior_eps
         self.lambd = lambd
+        self.prior_eps = prior_eps
         self.Q = Q
         self.Sigma_diag = Sigma_diag
-        self.tau = tau
         self.D = len(self.bb_loc)
-        self.cov_diag = (1/2)*self.Sigma_diag+self.prior_eps
-        self.cov_factor = math.sqrt(1/(2*self.K-2))*self.Q[:,:self.K]
+        self.bb_cov_diag = (1/2)*self.Sigma_diag+self.prior_eps
+        self.bb_cov_factor = math.sqrt(1/(2*self.K-2))*self.Q[:,:self.K]
         self.bb_prior = torch.distributions.lowrank_multivariate_normal.LowRankMultivariateNormal(
             loc=self.bb_loc,
-            cov_factor=math.sqrt(self.lambd)*self.cov_factor,
-            cov_diag=self.lambd*self.cov_diag,
+            cov_factor=math.sqrt(self.lambd)*self.bb_cov_factor,
+            cov_diag=self.lambd*self.bb_cov_diag,
         )
         
     def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
-        bb_log_prob = self.bb_prior.log_prob(params[:self.D]).sum()
-        clf_log_prob = (1/(2*self.tau)) * (params[self.D:]**2).sum()
+        bb_log_prob = self.bb_prior.log_prob(params[:self.D]).sum()/N
         bb_log_prob = torch.clamp(bb_log_prob, min=-1e20, max=1e20)
-        clf_log_prob = torch.clamp(clf_log_prob, min=-1e20, max=1e20)
-        return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - bb_log_prob/N + clf_log_prob/N}
+        clf_log_prob = (self.beta/2) * (params[self.D:]**2).sum()
+        return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - bb_log_prob + clf_log_prob}
     
 class L2KappaELBOLoss(torch.nn.Module):
+    #def __init__(self, bb_loc, bb_sigma_param, clf_sigma_param, kappa, criterion=torch.nn.CrossEntropyLoss()):
     def __init__(self, bb_loc, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
         super().__init__()
         self.bb_loc = bb_loc
+        #self.bb_sigma_param = bb_sigma_param
+        #self.clf_sigma_param = clf_sigma_param
         self.criterion = criterion
         self.kappa = kappa
         self.sigma_param = sigma_param
@@ -122,12 +133,15 @@ class L2KappaELBOLoss(torch.nn.Module):
         clf_term2 = (1/tau_star) * clf_loc_diff_norm
         clf_term3 = (len(params[self.D:]) * torch.log(tau_star)) - (len(params[self.D:]) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         clf_kl = (1/2) * (clf_term1 + clf_term2 - len(params[self.D:]) + clf_term3)
-        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau': tau_star}
+        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
     
 class PTYLKappaELBOLoss(torch.nn.Module):
+    #def __init__(self, bb_loc, bb_sigma_param, clf_sigma_param, kappa, Q, Sigma_diag, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
     def __init__(self, bb_loc, kappa, Q, Sigma_diag, sigma_param, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
         super().__init__()
         self.bb_loc = bb_loc
+        #self.bb_sigma_param = bb_sigma_param
+        #self.clf_sigma_param = clf_sigma_param
         self.criterion = criterion
         self.K = K
         self.kappa = kappa
@@ -155,5 +169,5 @@ class PTYLKappaELBOLoss(torch.nn.Module):
         clf_term2 = (1/tau_star) * clf_loc_diff_norm
         clf_term3 = (len(params[self.D:]) * torch.log(tau_star)) - (len(params[self.D:]) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         clf_kl = (1/2) * (clf_term1 + clf_term2 - len(params[self.D:]) + clf_term3)
-        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau': tau_star}
+        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
     
