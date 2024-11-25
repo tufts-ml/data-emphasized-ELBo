@@ -161,5 +161,7 @@ cython_debug/
 
 experiments/*
 scripts/wandb/*
-notebooks/CIFAR-10_dictionary.npy
-notebooks/Oxford-IIIT_Pet_dictionary.npy
+notebooks/CIFAR-10_ResNet_50_dictionary.npy
+notebooks/CIFAR-10_ViT_B_16_dictionary.npy
+notebooks/CIFAR-10_ConvNeXt_Tiny_dictionary.npy
+notebooks/Oxford-IIIT_Pet_ResNet_50_dictionary.npy

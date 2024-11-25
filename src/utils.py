@@ -161,6 +161,64 @@ def get_oxfordiiit_pet_datasets(dataset_directory, n, tune, random_state):
         train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, transform)
         test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
         return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
+    
+def get_flowers_102_datasets(dataset_directory, n, tune, random_state):
+
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Resize(size=(256, 256)),
+    ])
+    full_train_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='train', transform=transform, download=True)
+    full_test_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='test', transform=transform, download=True)
+
+    if n == len(full_train_dataset):
+        train_and_val_indices = np.arange(0, len(full_train_dataset))
+    else:
+        train_and_val_indices, _ = train_test_split(
+            np.arange(0, len(full_train_dataset)), 
+            test_size=None, 
+            train_size=n, 
+            random_state=random_state, 
+            shuffle=True, 
+            stratify=np.array(full_train_dataset._labels),
+        )
+
+    val_size = int((1/5) * n)
+    train_indices, val_indices = train_test_split(
+        train_and_val_indices, 
+        test_size=val_size, 
+        train_size=n-val_size, 
+        random_state=random_state, 
+        shuffle=True, 
+        stratify=np.array(full_train_dataset._labels)[train_and_val_indices],
+    )
+
+    if tune:
+        mean, std = get_mean_and_std(full_train_dataset, train_indices)
+    else:
+        mean, std = get_mean_and_std(full_train_dataset, train_and_val_indices)
+
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+
+    if tune:
+        augmented_train_dataset = TensorSubset(full_train_dataset, train_indices, augmented_transform)
+        train_dataset = TensorSubset(full_train_dataset, train_indices, transform)
+        val_dataset = TensorSubset(full_train_dataset, val_indices, transform)
+        return augmented_train_dataset, train_dataset, val_dataset
+    else:
+        augmented_train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, augmented_transform)
+        train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, transform)
+        test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
+        return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
 
 def get_fgvcaircraft_datasets(dataset_directory, n, tune, random_state):
 
@@ -228,18 +286,34 @@ def add_variational_layers(module, sigma_param):
             setattr(module, name, layers.VariationalConv2d(child, sigma_param))
         elif isinstance(child, torch.nn.BatchNorm2d):
             setattr(module, name, layers.VariationalBatchNorm2d(child, sigma_param))
+        elif isinstance(child, torchvision.models.convnext.LayerNorm2d):
+            setattr(module, name, layers.VariationalLayerNorm2d(child, sigma_param))
+        elif isinstance(child, torch.nn.LayerNorm):
+            setattr(module, name, layers.VariationalLayerNorm(child, sigma_param))
+        elif isinstance(child, torchvision.models.convnext.CNBlock):
+            setattr(module, name, layers.VariationalCNBlock(child, sigma_param))
+            add_variational_layers(child, sigma_param)
+        elif isinstance(child, torch.nn.MultiheadAttention):
+            setattr(module, name, layers.VariationalMultiheadAttention(child, sigma_param))
         else:
             add_variational_layers(child, sigma_param)
             
 def use_posterior(self, flag):
     for child in self.modules():
-        if isinstance(child, (layers.VariationalLinear, layers.VariationalConv2d, layers.VariationalBatchNorm2d)):
+        if isinstance(child, (
+            layers.VariationalLinear, 
+            layers.VariationalConv2d, 
+            layers.VariationalBatchNorm2d,
+            layers.VariationalLayerNorm2d,
+            layers.VariationalLayerNorm,
+            layers.VariationalCNBlock,
+        )):
             child.use_posterior = flag
             
 def flatten_params(model, excluded_params=['sigma_param', 'bb_sigma_param', 'clf_sigma_param']):
     return torch.cat([param.view(-1) for name, param in model.named_parameters() if name not in excluded_params])
     
-def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10):
+def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10, num_samples=1):
 
     device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
     model.train()
@@ -259,19 +333,27 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
 
         model.zero_grad()
         params = flatten_params(model)
-        logits = model(images)
-        losses = criterion(labels, logits, params, N=len(dataloader.dataset))
-        losses['loss'].backward()
+        for sample_index in range(num_samples):
+            logits = model(images)
+            losses = criterion(labels, logits, params, N=len(dataloader.dataset))
+            losses['loss'].backward()
+            
+        # TODO: Average metrics over num_samples instead of returning metrics for last sample.
+        if num_samples > 1:
+            for param in model.parameters():
+                if param.grad is not None:
+                    param.grad.data.mul_(1/num_samples)
+                
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
         
         if lr_scheduler:
             lr_scheduler.step()
 
-        metrics['loss'] += batch_size/dataset_size*losses['loss'].item()
-        metrics['nll'] += batch_size/dataset_size*losses['nll'].item()
+        metrics['loss'] += (batch_size/dataset_size)*losses['loss'].item()
+        metrics['nll'] += (batch_size/dataset_size)*losses['nll'].item()
         
-        # Added for data-emphasized ELBo
+        # Note: Added for DE ELBo
         metrics['lambda_star'] = losses.get('lambda_star')
         metrics['tau_star'] = losses.get('tau_star')
                     

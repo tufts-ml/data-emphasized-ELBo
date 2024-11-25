@@ -52,7 +52,7 @@ class ERMLoss(torch.nn.Module):
 
     def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
-        return {'nll': nll, 'loss': nll}
+        return {'loss': nll, 'nll': nll}
     
 class L2ZeroLoss(torch.nn.Module):
     def __init__(self, alpha, criterion=torch.nn.CrossEntropyLoss()):
@@ -108,12 +108,9 @@ class PTYLLoss(torch.nn.Module):
         return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - bb_log_prob + clf_log_prob}
     
 class L2KappaELBOLoss(torch.nn.Module):
-    #def __init__(self, bb_loc, bb_sigma_param, clf_sigma_param, kappa, criterion=torch.nn.CrossEntropyLoss()):
     def __init__(self, bb_loc, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
         super().__init__()
         self.bb_loc = bb_loc
-        #self.bb_sigma_param = bb_sigma_param
-        #self.clf_sigma_param = clf_sigma_param
         self.criterion = criterion
         self.kappa = kappa
         self.sigma_param = sigma_param
@@ -136,12 +133,9 @@ class L2KappaELBOLoss(torch.nn.Module):
         return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
     
 class PTYLKappaELBOLoss(torch.nn.Module):
-    #def __init__(self, bb_loc, bb_sigma_param, clf_sigma_param, kappa, Q, Sigma_diag, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
     def __init__(self, bb_loc, kappa, Q, Sigma_diag, sigma_param, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
         super().__init__()
         self.bb_loc = bb_loc
-        #self.bb_sigma_param = bb_sigma_param
-        #self.clf_sigma_param = clf_sigma_param
         self.criterion = criterion
         self.K = K
         self.kappa = kappa
