@@ -74,7 +74,7 @@ if __name__=='__main__':
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         bb_loc = torch.zeros_like(bb_loc).to(device)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
     elif args.criterion == 'l2-sp' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.L2SPLoss(args.alpha, bb_loc, args.beta)
@@ -83,7 +83,7 @@ if __name__=='__main__':
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
     elif args.criterion == 'ptyl' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         # Note: Released covmat is shape K \times D. PTYLLoss() expects Q to be shape D \times K.
@@ -95,10 +95,10 @@ if __name__=='__main__':
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        # Note: Released covmat is shape K \times D. PTYLKappaELBOLoss() expects Q to be shape D \times K.
+        # Note: Released covmat is shape K \times D. PTYLKappaELBoLoss() expects Q to be shape D \times K.
         Q = torch.load(f'{args.prior_directory}/{args.prior_type}_covmat.pt', map_location=torch.device('cpu'), weights_only=False).to(device).T
         Sigma_diag = torch.load(f'{args.prior_directory}/{args.prior_type}_variance.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        criterion = losses.PTYLKappaELBOLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
+        criterion = losses.PTYLKappaELBoLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
     else:
         raise NotImplementedError(f'The specified criterion \'{args.criterion}\' is not implemented.')
         

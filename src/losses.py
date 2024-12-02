@@ -106,8 +106,25 @@ class PTYLLoss(torch.nn.Module):
         bb_log_prob = torch.clamp(bb_log_prob, min=-1e20, max=1e20)
         clf_log_prob = (self.beta/2) * (params[self.D:]**2).sum()
         return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - bb_log_prob + clf_log_prob}
+
+class KappaELBoLoss(torch.nn.Module):
+    def __init__(self, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
+        super().__init__()
+        self.criterion = criterion
+        self.kappa = kappa
+        self.sigma_param = sigma_param
+
+    def forward(self, labels, logits, params, N=1):
+        nll = self.criterion(logits, labels)
+        loc_diff_norm = (params**2).sum()
+        lambda_star = (loc_diff_norm/len(params)) + torch.nn.functional.softplus(self.sigma_param)**2
+        term1 = (torch.nn.functional.softplus(self.sigma_param)**2/lambda_star) * len(params)
+        term2 = (1/lambda_star) * loc_diff_norm
+        term3 = (len(params) * torch.log(lambda_star)) - (len(params) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
+        kl = (1/2) * (term1 + term2 - len(params) + term3)
+        return {'kl': kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + kl, 'nll': nll}    
     
-class L2KappaELBOLoss(torch.nn.Module):
+class L2KappaELBoLoss(torch.nn.Module):
     def __init__(self, bb_loc, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
         super().__init__()
         self.bb_loc = bb_loc
@@ -132,7 +149,7 @@ class L2KappaELBOLoss(torch.nn.Module):
         clf_kl = (1/2) * (clf_term1 + clf_term2 - len(params[self.D:]) + clf_term3)
         return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
     
-class PTYLKappaELBOLoss(torch.nn.Module):
+class PTYLKappaELBoLoss(torch.nn.Module):
     def __init__(self, bb_loc, kappa, Q, Sigma_diag, sigma_param, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
         super().__init__()
         self.bb_loc = bb_loc

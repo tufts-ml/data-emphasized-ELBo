@@ -69,12 +69,25 @@ if __name__=='__main__':
     if args.criterion == 'l2-zero' and not args.ELBo:
         criterion = losses.L2ZeroLoss(args.alpha)
     elif args.criterion == 'l2-zero' and args.ELBo:        
+        #model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
+        #utils.add_variational_layers(model, model.sigma_param)
+        #model.use_posterior = types.MethodType(utils.use_posterior, model)
+        #bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
+        #bb_loc = torch.zeros_like(bb_loc).to(device)
+        #criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
         model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
-        utils.add_variational_layers(model, model.sigma_param)
+        setattr(model, 'fc', layers.VariationalLinear(model.fc, model.sigma_param))
         model.use_posterior = types.MethodType(utils.use_posterior, model)
-        bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        bb_loc = torch.zeros_like(bb_loc).to(device)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        for param in model.parameters():
+            param.requires_grad = False
+        model.sigma_param.requires_grad = True
+        model.fc.layer.weight.requires_grad = True
+        model.fc.layer.bias.requires_grad = True
+        criterion = losses.KappaELBoLoss(args.kappa, model.sigma_param)
+        optimizer = torch.optim.SGD([
+            {'params': [model.sigma_param]},
+            {'params': model.fc.layer.parameters()},
+        ], lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
     elif args.criterion == 'l2-sp' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.L2SPLoss(args.alpha, bb_loc, args.beta)
@@ -83,7 +96,7 @@ if __name__=='__main__':
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
     elif args.criterion == 'ptyl' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         # Note: Released covmat is shape K \times D. PTYLLoss() expects Q to be shape D \times K.
@@ -95,14 +108,20 @@ if __name__=='__main__':
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        # Note: Released covmat is shape K \times D. PTYLKappaELBOLoss() expects Q to be shape D \times K.
+        # Note: Released covmat is shape K \times D. PTYLKappaELBoLoss() expects Q to be shape D \times K.
         Q = torch.load(f'{args.prior_directory}/{args.prior_type}_covmat.pt', map_location=torch.device('cpu'), weights_only=False).to(device).T
         Sigma_diag = torch.load(f'{args.prior_directory}/{args.prior_type}_variance.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        criterion = losses.PTYLKappaELBOLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
+        criterion = losses.PTYLKappaELBoLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
     else:
         raise NotImplementedError(f'The specified criterion \'{args.criterion}\' is not implemented.')
         
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
+    #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
+    # TODO: Added for linear probing
+    #for param in model.parameters():
+    #    param.requires_grad = False
+    #model.fc.weight.requires_grad = True
+    #model.fc.bias.requires_grad = True
+    #optimizer = torch.optim.SGD(model.fc.parameters(), lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
 
     steps = 6000
     num_batches = len(augmented_train_loader)
@@ -112,7 +131,8 @@ if __name__=='__main__':
     if not args.ELBo:
         columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
     else:
-        columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
+        #columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
+        columns = ['epoch', 'lambda_star', 'sigma', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
 
     model_history_df = pd.DataFrame(columns=columns)
     
@@ -139,7 +159,8 @@ if __name__=='__main__':
         if not args.ELBo:
             row = [epoch, train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
         else:
-            row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), augmented_train_metrics['tau_star'].item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
+            #row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), augmented_train_metrics['tau_star'].item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
+            row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
             
         model_history_df.loc[epoch] = row
         print(model_history_df.iloc[epoch])

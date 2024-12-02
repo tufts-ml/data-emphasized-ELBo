@@ -13,8 +13,8 @@ import utils
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='main.py')
     parser.add_argument('--alpha', default=0.01, help='Backbone weight decay (default: 0.01)', type=float)
-    parser.add_argument('--beta', default=0.01, help='Classifier head weight decay (default: 0.01)', type=float)
     parser.add_argument('--batch_size', default=128, help='Batch size (default: 128)', type=int)
+    parser.add_argument('--beta', default=0.01, help='Classifier head weight decay (default: 0.01)', type=float)
     parser.add_argument('--criterion', default='l2-sp', help='Criterion (default: \'l2-sp\')', type=str)
     parser.add_argument('--dataset_directory', default='', help='Directory to dataset (default: \'\')', type=str)
     parser.add_argument('--ELBo', action='store_true', default=False, help='Whether or not to learn regularization strength with the ELBo (default: False)')
@@ -22,6 +22,7 @@ if __name__=='__main__':
     parser.add_argument('--kappa', default=1.0, help='TODO (default: 1.0)', type=float)
     parser.add_argument('--lambd', default=1.0, help='Covariance scaling factor (default: 1.0)', type=float)
     parser.add_argument('--lr_0', default=0.1, help='Initial learning rate (default: 0.1)', type=float)
+    parser.add_argument('--model_arch', default='ResNet-50', help='Model architecture (default: \'ResNet-50\')', type=str)
     parser.add_argument('--model_name', default='test', help='Model name (default: \'test\')', type=str)
     parser.add_argument('--n', default=1000, help='Number of training samples (default: 1000)', type=int)
     parser.add_argument('--num_workers', default=0, help='Number of workers (default: 0)', type=int)
@@ -46,10 +47,23 @@ if __name__=='__main__':
     print(device)
         
     checkpoint = torch.load(f'{args.prior_directory}/{args.prior_type}_model.pt', map_location=torch.device('cpu'), weights_only=False)
-    model = torchvision.models.resnet50()
-    model.fc = torch.nn.Identity()
-    model.load_state_dict(checkpoint)
-    model.fc = torch.nn.Linear(in_features=2048, out_features=num_classes, bias=True)
+    if args.model_arch == 'ResNet-50':
+        model = torchvision.models.resnet50()
+        model.fc = torch.nn.Identity()
+        model.load_state_dict(checkpoint)
+        model.fc = torch.nn.Linear(in_features=2048, out_features=num_classes, bias=True)
+    elif args.model_arch == 'ViT-B/16':
+        model = torchvision.models.vit_b_16()
+        model.heads = torch.nn.Identity()
+        model.load_state_dict(checkpoint)
+        model.heads = torch.nn.Linear(in_features=768, out_features=num_classes, bias=True)
+    elif args.model_arch == 'ConvNeXt_Tiny':
+        model = torchvision.models.convnext_tiny()
+        model.classifier[2] = torch.nn.Identity()
+        model.load_state_dict(checkpoint)
+        model.classifier[2] = torch.nn.Linear(in_features=768, out_features=num_classes, bias=True)
+    else:
+        raise NotImplementedError(f'The specified model architecture \'{args.model_arch}\' is not implemented.')
     model.to(device)
     
     if args.criterion == 'l2-zero' and not args.ELBo:
@@ -60,20 +74,16 @@ if __name__=='__main__':
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         bb_loc = torch.zeros_like(bb_loc).to(device)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
     elif args.criterion == 'l2-sp' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.L2SPLoss(args.alpha, bb_loc, args.beta)
     elif args.criterion == 'l2-sp' and args.ELBo:
-        #model.bb_sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
-        #model.clf_sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
-        #utils.add_variational_layers(model, model.bb_sigma_param, model.clf_sigma_param)
         model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        #criterion = losses.L2KappaELBOLoss(bb_loc, model.bb_sigma_param, model.clf_sigma_param, args.kappa)
-        criterion = losses.L2KappaELBOLoss(bb_loc, args.kappa, model.sigma_param)
+        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
     elif args.criterion == 'ptyl' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         # Note: Released covmat is shape K \times D. PTYLLoss() expects Q to be shape D \times K.
@@ -81,18 +91,14 @@ if __name__=='__main__':
         Sigma_diag = torch.load(f'{args.prior_directory}/{args.prior_type}_variance.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.PTYLLoss(bb_loc, args.beta, args.lambd, Q, Sigma_diag)
     elif args.criterion == 'ptyl' and args.ELBo:
-        #model.bb_sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
-        #model.clf_sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
-        #utils.add_variational_layers(model, model.bb_sigma_param, model.clf_sigma_param)
         model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        # Note: Released covmat is shape K \times D. PTYLKappaELBOLoss() expects Q to be shape D \times K.
+        # Note: Released covmat is shape K \times D. PTYLKappaELBoLoss() expects Q to be shape D \times K.
         Q = torch.load(f'{args.prior_directory}/{args.prior_type}_covmat.pt', map_location=torch.device('cpu'), weights_only=False).to(device).T
         Sigma_diag = torch.load(f'{args.prior_directory}/{args.prior_type}_variance.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        #criterion = losses.PTYLKappaELBOLoss(bb_loc, model.bb_sigma_param, model.clf_sigma_param, args.kappa, Q, Sigma_diag)
-        criterion = losses.PTYLKappaELBOLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
+        criterion = losses.PTYLKappaELBoLoss(bb_loc, args.kappa, Q, Sigma_diag, model.sigma_param)
     else:
         raise NotImplementedError(f'The specified criterion \'{args.criterion}\' is not implemented.')
         
@@ -106,7 +112,6 @@ if __name__=='__main__':
     if not args.ELBo:
         columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
     else:
-        #columns = ['bb_sigma', 'clf_sigma', 'epoch', 'lambda_star', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
         columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
 
     model_history_df = pd.DataFrame(columns=columns)
@@ -130,7 +135,7 @@ if __name__=='__main__':
                 val_or_test_metrics = utils.evaluate(model, criterion, val_or_test_loader, num_classes=num_classes)
         else:
             val_or_test_metrics = {'acc': 0.0, 'loss': 0.0, 'nll': 0.0}
-
+                
         if not args.ELBo:
             row = [epoch, train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
         else:

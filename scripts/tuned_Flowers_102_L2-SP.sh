@@ -1,11 +1,11 @@
 #!/bin/bash
-#SBATCH --array=0-863%8
+#SBATCH --array=0-863%30
 #SBATCH --error=/cluster/tufts/hugheslab/eharve06/slurmlog/err/log_%j.err
-#SBATCH --gres=gpu:rtx_a6000:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64g
 #SBATCH --ntasks=4
 #SBATCH --output=/cluster/tufts/hugheslab/eharve06/slurmlog/out/log_%j.out
-#SBATCH --partition=hugheslab
+#SBATCH --partition=ccgpu
 #SBATCH --time=48:00:00
 
 source ~/.bashrc

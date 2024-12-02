@@ -16,7 +16,7 @@ class VariationalLinear(torch.nn.Module):
                 self.variational_bias,
             )
             
-        return self.layer(x)
+        return self.layer(x)    
     
     @property
     def variational_weight(self):
