@@ -103,7 +103,7 @@ if __name__=='__main__':
         raise NotImplementedError(f'The specified criterion \'{args.criterion}\' is not implemented.')
         
     optimizer = torch.optim.SGD(model.parameters(), lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
-
+    
     steps = 6000
     num_batches = len(augmented_train_loader)
     epochs = int(steps/num_batches)

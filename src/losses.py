@@ -102,10 +102,10 @@ class PTYLLoss(torch.nn.Module):
         
     def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
-        bb_log_prob = self.bb_prior.log_prob(params[:self.D]).sum()/N
+        bb_log_prob = self.bb_prior.log_prob(params[:self.D]).sum()
         bb_log_prob = torch.clamp(bb_log_prob, min=-1e20, max=1e20)
         clf_log_prob = (self.beta/2) * (params[self.D:]**2).sum()
-        return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - bb_log_prob + clf_log_prob}
+        return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - (1/N) * bb_log_prob + clf_log_prob}
 
 class KappaELBoLoss(torch.nn.Module):
     def __init__(self, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
@@ -122,7 +122,7 @@ class KappaELBoLoss(torch.nn.Module):
         term2 = (1/lambda_star) * loc_diff_norm
         term3 = (len(params) * torch.log(lambda_star)) - (len(params) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         kl = (1/2) * (term1 + term2 - len(params) + term3)
-        return {'kl': kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + kl, 'nll': nll}    
+        return {'kl': kl, 'lambda_star': lambda_star, 'loss': nll + (1/self.kappa) * (1/N) * kl, 'nll': nll}    
     
 class L2KappaELBoLoss(torch.nn.Module):
     def __init__(self, bb_loc, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):
@@ -147,7 +147,7 @@ class L2KappaELBoLoss(torch.nn.Module):
         clf_term2 = (1/tau_star) * clf_loc_diff_norm
         clf_term3 = (len(params[self.D:]) * torch.log(tau_star)) - (len(params[self.D:]) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         clf_kl = (1/2) * (clf_term1 + clf_term2 - len(params[self.D:]) + clf_term3)
-        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
+        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': nll + (1/self.kappa) * (1/N) * (bb_kl + clf_kl), 'nll': nll, 'tau_star': tau_star}
     
 class PTYLKappaELBoLoss(torch.nn.Module):
     def __init__(self, bb_loc, kappa, Q, Sigma_diag, sigma_param, criterion=torch.nn.CrossEntropyLoss(), K=5, prior_eps=0.1):
@@ -180,5 +180,5 @@ class PTYLKappaELBoLoss(torch.nn.Module):
         clf_term2 = (1/tau_star) * clf_loc_diff_norm
         clf_term3 = (len(params[self.D:]) * torch.log(tau_star)) - (len(params[self.D:]) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         clf_kl = (1/2) * (clf_term1 + clf_term2 - len(params[self.D:]) + clf_term3)
-        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': self.kappa * N * nll + bb_kl + clf_kl, 'nll': nll, 'tau_star': tau_star}
+        return {'bb_kl': bb_kl, 'clf_kl': clf_kl, 'lambda_star': lambda_star, 'loss': nll + (1/self.kappa) * (1/N) * (bb_kl + clf_kl), 'nll': nll, 'tau_star': tau_star}
     

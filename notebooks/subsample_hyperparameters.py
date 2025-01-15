@@ -30,11 +30,14 @@ if __name__=='__main__':
     #retrained_cifar10_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_CIFAR-10_ConvNeXt_Tiny.csv')
     #cifar10_dictionary = subsample_hyperparameters([100, 1000, 10000, 50000], retrained_cifar10_df, tuned_cifar10_df)
     #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt_Tiny_dictionary.npy', cifar10_dictionary)
-    #tuned_oxfordiiit_pet_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Oxford-IIIT_Pet.csv')
-    #retrained_oxfordiiit_pet_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Oxford-IIIT_Pet.csv')
+    
+    #tuned_oxfordiiit_pet_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
+    #retrained_oxfordiiit_pet_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
     #oxfordiiit_pet_dictionary = subsample_hyperparameters([370, 3441], retrained_oxfordiiit_pet_df, tuned_oxfordiiit_pet_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Oxford-IIIT_Pet_ResNet_50_dictionary.npy', oxfordiiit_pet_dictionary)
-    tuned_flowers_102_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Flowers_102_ResNet_50.csv')
-    retrained_flowers_102_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Flowers_102_ResNet_50.csv')
+    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Oxford-IIIT_Pet_ConvNeXt_Tiny_dictionary.npy', oxfordiiit_pet_dictionary)
+    
+    tuned_flowers_102_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Flowers_102_ConvNeXt_Tiny.csv')
+    retrained_flowers_102_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Flowers_102_ConvNeXt_Tiny.csv')
     flowers_102_dictionary = subsample_hyperparameters([510, 1020], retrained_flowers_102_df, tuned_flowers_102_df)
-    np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Flowers_102_ResNet_50_dictionary.npy', flowers_102_dictionary)
+    np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Flowers_102_ConvNeXt_Tiny_dictionary.npy', flowers_102_dictionary)
+    

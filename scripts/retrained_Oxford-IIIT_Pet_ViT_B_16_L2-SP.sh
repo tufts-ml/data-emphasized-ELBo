@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=73-73%30
+#SBATCH --array=0-863%30
 #SBATCH --error=/cluster/tufts/hugheslab/eharve06/slurmlog/err/log_%j.err
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64g
@@ -13,7 +13,7 @@
 source ~/.bashrc
 conda activate l3d_2024f_cuda12_1
 
-# Define an array of commands 29 73 98 [0-432][0-863]
+# Define an array of commands
 experiments=(
     "python ../src/main_Oxford-IIIT_Pet.py --alpha=0.01 --beta=0.01 --batch_size=128 --criterion='l2-sp' --dataset_directory='/cluster/tufts/hugheslab/eharve06/Oxford-IIIT_Pet' --experiments_directory='/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/experiments/retrained_Oxford-IIIT_Pet_ViT_B_16' --lr_0=0.1 --model_arch='ViT-B/16' --model_name='l2-sp_alpha=0.01_beta=0.01_lr_0=0.1_n=370_random_state=1001' --n=370 --num_workers=0 --prior_directory='/cluster/tufts/hugheslab/eharve06/vit_b_16_torchvision' --prior_type='vit_b_16_torchvision' --random_state=1001"
     "python ../src/main_Oxford-IIIT_Pet.py --alpha=0.01 --beta=0.01 --batch_size=128 --criterion='l2-sp' --dataset_directory='/cluster/tufts/hugheslab/eharve06/Oxford-IIIT_Pet' --experiments_directory='/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/experiments/retrained_Oxford-IIIT_Pet_ViT_B_16' --lr_0=0.1 --model_arch='ViT-B/16' --model_name='l2-sp_alpha=0.01_beta=0.01_lr_0=0.1_n=370_random_state=2001' --n=370 --num_workers=0 --prior_directory='/cluster/tufts/hugheslab/eharve06/vit_b_16_torchvision' --prior_type='vit_b_16_torchvision' --random_state=2001"

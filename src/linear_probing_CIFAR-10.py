@@ -78,9 +78,16 @@ if __name__=='__main__':
         model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
         setattr(model, 'fc', layers.VariationalLinear(model.fc, model.sigma_param))
         model.use_posterior = types.MethodType(utils.use_posterior, model)
-        bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        bb_loc = torch.zeros_like(bb_loc).to(device)
-        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
+        for param in model.parameters():
+            param.requires_grad = False
+        model.sigma_param.requires_grad = True
+        model.fc.layer.weight.requires_grad = True
+        model.fc.layer.bias.requires_grad = True
+        criterion = losses.KappaELBoLoss(args.kappa, model.sigma_param)
+        optimizer = torch.optim.SGD([
+            {'params': [model.sigma_param]},
+            {'params': model.fc.layer.parameters()},
+        ], lr=args.lr_0, weight_decay=0.0, momentum=0.9, nesterov=True)
     elif args.criterion == 'l2-sp' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.L2SPLoss(args.alpha, bb_loc, args.beta)

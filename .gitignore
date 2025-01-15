@@ -165,4 +165,8 @@ notebooks/CIFAR-10_ResNet_50_dictionary.npy
 notebooks/CIFAR-10_ViT_B_16_dictionary.npy
 notebooks/CIFAR-10_ConvNeXt_Tiny_dictionary.npy
 notebooks/Oxford-IIIT_Pet_ResNet_50_dictionary.npy
+notebooks/Oxford-IIIT_Pet_ViT_B_16_dictionary.npy
+notebooks/Oxford-IIIT_Pet_ConvNeXt_Tiny_dictionary.npy
 notebooks/Flowers_102_ResNet_50_dictionary.npy
+notebooks/Flowers_102_ViT_B_16_dictionary.npy
+notebooks/Flowers_102_ConvNeXt_Tiny_dictionary.npy

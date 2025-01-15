@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=0-47%20
+#SBATCH --array=0-47%30
 #SBATCH --error=/cluster/tufts/hugheslab/eharve06/slurmlog/err/log_%j.err
 #SBATCH --gres=gpu:a100:1
 #SBATCH --mem=64g
