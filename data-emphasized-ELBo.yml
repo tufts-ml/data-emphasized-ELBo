@@ -1,4 +1,4 @@
-name: l3d_2024f_cuda12_1
+name: data-emphasized-ELBo
 channels:
   - defaults
   - pytorch

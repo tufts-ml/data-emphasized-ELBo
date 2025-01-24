@@ -9,7 +9,7 @@
 #SBATCH --time=48:00:00
 
 source ~/.bashrc
-conda activate environment
+conda activate data-emphasized-ELBo
 
 # Define an array of commands
 experiments=(
