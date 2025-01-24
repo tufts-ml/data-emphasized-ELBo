@@ -8,6 +8,3 @@ Figure 3: Test-set accuracy on CIFAR-10, Pet-37, and Flower-102 over training ti
 ```
 conda env create -f data-emphasized-ELBo.yml
 ```
-
-# Downloading our experiments
-A zip file of all our experiments can be found at https://tufts.box.com/v/data-emphasized-ELBo.
