@@ -26,7 +26,7 @@ if __name__=='__main__':
     parser.add_argument('--model_name', default='test', help='Model name (default: \'test\')', type=str)
     parser.add_argument('--n', default=1000, help='Number of training samples (default: 1000)', type=int)
     parser.add_argument('--num_workers', default=0, help='Number of workers (default: 0)', type=int)
-    parser.add_argument('--prior_directory', default='/cluster/tufts/hugheslab/eharve06/resnet50_torchvision', help='TODO (default: \'/cluster/tufts/hugheslab/eharve06/resnet50_torchvision\')', type=str)
+    parser.add_argument('--prior_directory', default='', help='TODO (default: \'\')', type=str)
     parser.add_argument('--prior_type', default='resnet50_torchvision', help='TODO (default: \'resnet50_torchvision\')', type=str)
     parser.add_argument('--random_state', default=42, help='Random state (default: 42)', type=int)
     parser.add_argument('--save', action='store_true', default=False, help='Whether or not to save the model (default: False)')
