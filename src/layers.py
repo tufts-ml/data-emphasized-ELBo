@@ -1,14 +1,21 @@
-import math
 # PyTorch
 import torch
 
 class RandomFeatureGaussianProcess(torch.nn.Module):
-    def __init__(self, in_features, out_features, lengthscale=math.sqrt(20), outputscale=1.0, rank=1024):
+    def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_outputscale=False, lengthscale=20.0, outputscale=1.0, rank=1024):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.lengthscale = lengthscale
-        self.outputscale = outputscale
+        self.learnable_lengthscale = learnable_lengthscale
+        self.learnable_outputscale = learnable_outputscale
+        if self.learnable_lengthscale:
+            self.lengthscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(lengthscale))))
+        else:
+            self.lengthscale_param = torch.log(torch.expm1(torch.tensor(lengthscale)))
+        if self.learnable_outputscale:
+            self.outputscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(outputscale))))
+        else:
+            self.outputscale_param = torch.log(torch.expm1(torch.tensor(outputscale)))
         self.rank = rank
         self.register_buffer('feature_weight', torch.randn(self.rank, self.in_features))
         self.register_buffer('feature_bias', 2 * torch.pi * torch.rand(self.rank))
@@ -19,10 +26,17 @@ class RandomFeatureGaussianProcess(torch.nn.Module):
         return (2/self.rank)**0.5 * torch.cos(features)
         
     def forward(self, h):
-        batch_size, hidden_dim = h.shape
         features = self.outputscale * self.featurize(h)
         logits = self.linear(features)
         return logits
+    
+    @property
+    def lengthscale(self):
+        return torch.nn.functional.softplus(self.lengthscale_param)
+    
+    @property
+    def outputscale(self):
+        return torch.nn.functional.softplus(self.outputscale_param)
 
 class VariationalLinear(torch.nn.Module):
     def __init__(self, layer, sigma_param, use_posterior=False):
