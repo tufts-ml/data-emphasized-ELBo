@@ -310,7 +310,7 @@ def use_posterior(self, flag):
         )):
             child.use_posterior = flag
     
-def flatten_params(model, excluded_params=['sigma_param']):
+def flatten_params(model, excluded_params=['lengthscale_param', 'outputscale_param', 'sigma_param']):
     return torch.cat([param.view(-1) for name, param in model.named_parameters() if param.requires_grad and name not in excluded_params])
     
 def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10, num_samples=1):
