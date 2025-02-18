@@ -2,42 +2,60 @@
 import torch
 
 class RandomFeatureGaussianProcess(torch.nn.Module):
-    def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_outputscale=False, lengthscale=20.0, outputscale=1.0, rank=1024):
+    def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_noise=False, learnable_outputscale=False, lengthscale=20.0, noise=1.0, outputscale=1.0, rank=1024):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
+        
         self.learnable_lengthscale = learnable_lengthscale
+        self.learnable_noise = learnable_noise
         self.learnable_outputscale = learnable_outputscale
+        
         if self.learnable_lengthscale:
             self.lengthscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(lengthscale))))
         else:
             self.lengthscale_param = torch.log(torch.expm1(torch.tensor(lengthscale)))
+        
+        if self.learnable_noise:
+            self.noise_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(noise))))
+        else:
+            self.noise_param = torch.log(torch.expm1(torch.tensor(noise)))
+        
         if self.learnable_outputscale:
             self.outputscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(outputscale))))
         else:
             self.outputscale_param = torch.log(torch.expm1(torch.tensor(outputscale)))
+                    
         self.rank = rank
         self.register_buffer('feature_weight', torch.randn(self.rank, self.in_features))
         self.register_buffer('feature_bias', 2 * torch.pi * torch.rand(self.rank))
         self.linear = torch.nn.Linear(in_features=self.rank, out_features=self.out_features, bias=False)
-                                        
+
     def featurize(self, h):
         features = torch.nn.functional.linear(h, (1/self.lengthscale) * self.feature_weight, self.feature_bias)
-        return (2/self.rank)**0.5 * torch.cos(features)
+        return self.outputscale * (2/self.rank)**0.5 * torch.cos(features)
         
     def forward(self, h):
-        features = self.outputscale * self.featurize(h)
+        features = self.featurize(h)
         logits = self.linear(features)
         return logits
     
+    def gaussian_nll_loss(self, logits, labels):
+        batch_size, num_classes = logits.shape
+        return torch.nn.functional.gaussian_nll_loss(logits, labels, self.noise**2 * torch.ones(size=(batch_size,)))
+    
     @property
     def lengthscale(self):
-        return torch.nn.functional.softplus(self.lengthscale_param)
+        return torch.nn.functional.softplus(self.lengthscale_param) + 1e-6
+        
+    @property
+    def noise(self):
+        return torch.nn.functional.softplus(self.noise_param) + 1e-6
     
     @property
     def outputscale(self):
-        return torch.nn.functional.softplus(self.outputscale_param)
-
+        return torch.nn.functional.softplus(self.outputscale_param) + 1e-6
+        
 class VariationalLinear(torch.nn.Module):
     def __init__(self, layer, sigma_param, use_posterior=False):
         super().__init__()
