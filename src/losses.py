@@ -106,14 +106,6 @@ class PTYLLoss(torch.nn.Module):
         bb_log_prob = torch.clamp(bb_log_prob, min=-1e20, max=1e20)
         clf_log_prob = (self.beta/2) * (params[self.D:]**2).sum()
         return {'bb_log_prob': bb_log_prob, 'clf_log_prob': clf_log_prob, 'nll': nll, 'loss': nll - (1/N) * bb_log_prob + clf_log_prob}
-    
-import torch
-
-def parametrize_cholesky(raw_params):
-    L = torch.tril(raw_params)
-    diag = torch.nn.functional.softplus(torch.diag(L))
-    L = L - torch.diag_embed(torch.diag(L)) + torch.diag_embed(diag)
-    return L
 
 class KappaELBoLoss(torch.nn.Module):
     # Note: This class is for demo notebooks.
@@ -126,25 +118,13 @@ class KappaELBoLoss(torch.nn.Module):
     def forward(self, labels, logits, params, N=1):
         nll = self.criterion(logits, labels)
         loc_diff_norm = (params**2).sum()
-        if self.sigma_param.shape == torch.Size([]):
-            lambda_star = (loc_diff_norm/len(params)) + torch.nn.functional.softplus(self.sigma_param)**2
-            term1 = (torch.nn.functional.softplus(self.sigma_param)**2/lambda_star) * len(params)
-            term2 = (1/lambda_star) * loc_diff_norm
-            term3 = (len(params) * torch.log(lambda_star)) - (len(params) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
-        elif self.sigma_param.shape == torch.Size([len(params),]):
-            lambda_star = (loc_diff_norm + torch.sum(torch.nn.functional.softplus(self.sigma_param)**2))/len(params)
-            term1 = (1/lambda_star) * torch.sum(torch.nn.functional.softplus(self.sigma_param)**2)
-            term2 = (1/lambda_star) * loc_diff_norm
-            term3 = (len(params) * torch.log(lambda_star)) - (torch.sum(torch.log(torch.nn.functional.softplus(self.sigma_param)**2)))
-        elif self.sigma_param.shape == torch.Size([len(params), len(params),]):
-            L = parametrize_cholesky(self.sigma_param)
-            lambda_star = (loc_diff_norm + torch.trace(L@L.T))/len(params)
-            term1 = (1/lambda_star) * torch.trace(L@L.T)
-            term2 = (1/lambda_star) * loc_diff_norm
-            term3 = (len(params) * torch.log(lambda_star)) - (2 * torch.sum(torch.log(torch.diag(L))))
-        
+        #tau_star = (loc_diff_norm/len(params)) + torch.nn.functional.softplus(self.sigma_param)**2
+        tau_star = torch.tensor(1.0)
+        term1 = (torch.nn.functional.softplus(self.sigma_param)**2/tau_star) * len(params)
+        term2 = (1/tau_star) * loc_diff_norm
+        term3 = (len(params) * torch.log(tau_star)) - (len(params) * torch.log(torch.nn.functional.softplus(self.sigma_param)**2))
         kl = (1/2) * (term1 + term2 - len(params) + term3)
-        return {'kl': kl, 'lambda_star': lambda_star, 'loss': nll + (1/self.kappa) * (1/N) * kl, 'nll': nll}    
+        return {'kl': kl, 'tau_star': tau_star, 'loss': nll + (1/self.kappa) * (1/N) * kl, 'nll': nll}    
     
 class L2KappaELBoLoss(torch.nn.Module):
     def __init__(self, bb_loc, kappa, sigma_param, criterion=torch.nn.CrossEntropyLoss()):

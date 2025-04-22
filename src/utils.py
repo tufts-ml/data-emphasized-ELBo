@@ -295,6 +295,8 @@ def add_variational_layers(module, sigma_param):
             add_variational_layers(child, sigma_param)
         elif isinstance(child, torch.nn.MultiheadAttention):
             setattr(module, name, layers.VariationalMultiheadAttention(child, sigma_param))
+        elif isinstance(child, torch.nn.Embedding):
+            setattr(module, name, layers.VariationalEmbedding(child, sigma_param))
         else:
             add_variational_layers(child, sigma_param)
             
@@ -310,7 +312,7 @@ def use_posterior(self, flag):
         )):
             child.use_posterior = flag
     
-def flatten_params(model, excluded_params=['lengthscale_param', 'outputscale_param', 'sigma_param']):
+def flatten_params(model, excluded_params=['lengthscale_param', 'noise_param', 'outputscale_param', 'sigma_param']):
     return torch.cat([param.view(-1) for name, param in model.named_parameters() if param.requires_grad and name not in excluded_params])
     
 def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10, num_samples=1):
