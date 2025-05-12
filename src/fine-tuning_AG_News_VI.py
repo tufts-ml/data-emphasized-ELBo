@@ -157,7 +157,7 @@ def evaluate(model, criterion, dataloader, num_classes=10):
         
     return metrics
 
-# python fine-tuning_AG_News.py --alpha=0.0001 --batch_size=32 --beta=0.0001 --criterion='l2-sp' --dataset_directory='/cluster/tufts/hugheslab/eharve06/AG_News' --experiments_directory='/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/experiments/tuned_AG_News' --lr_0=0.01 --model_name='l2-sp_alpha=0.0001_beta=0.0001_lr_0=0.01_n=400_random_state=1001' --n=400 --random_state=1001 --tune
+# python fine-tuning_AG_News.py --alpha=0.0001 --batch_size=32 --beta=0.0001 --criterion='l2-sp' --dataset_directory='{root_directory}/AG_News' --experiments_directory='{root_directory}/data-emphasized-ELBo/experiments/tuned_AG_News' --lr_0=0.01 --model_name='l2-sp_alpha=0.0001_beta=0.0001_lr_0=0.01_n=400_random_state=1001' --n=400 --random_state=1001 --tune
 if __name__=='__main__':
     parser = argparse.ArgumentParser(description='main.py')
     parser.add_argument('--alpha', default=0.01, help='Backbone weight decay (default: 0.01)', type=float)
