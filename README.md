@@ -9,3 +9,6 @@ Figure 2: Test accuracy over time for L2-SP transfer learning methods. Each pane
 conda env create -f l3d_24f_cuda.yml
 conda activate l3d_24f_cuda
 ```
+
+# Rerunning experiments
+Scripts to rerun all experiments are printed out in notebooks (e.g., all scripts for CIFAR-10 variational inference experiments can be found in `CIFAR-10_VI.ipynb`).
