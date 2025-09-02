@@ -145,7 +145,7 @@ class LowRankGaussianPrior(torch.nn.Module):
         self.cov_diag = 0.5 * self.Sigma_diag + self.prior_eps
         self.cov_factor = math.sqrt(1 / (2 * self.K - 2)) * self.Q[:,:self.K]
         self.trace_of_cov_inv = trace_of_Woodbury_matrix_identity(self.cov_diag, self.cov_factor, self.cov_factor.T)
-        self.diag_of_cov_inv = trace_of_Woodbury_matrix_identity(self.cov_diag, self.cov_factor, self.cov_factor.T)
+        self.diag_of_cov_inv = diag_of_Woodbury_matrix_identity(self.cov_diag, self.cov_factor, self.cov_factor.T)
         self.log_det_cov = log_matrix_determinant_lemma(self.cov_diag, self.cov_factor, self.cov_factor.T)
         
     def kl(self, params, sigma):
