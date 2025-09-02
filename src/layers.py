@@ -1,30 +1,25 @@
 # PyTorch
 import torch
 
-class RandomFeatureGaussianProcess(torch.nn.Module):
-    def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_noise=False, learnable_outputscale=False, lengthscale=20.0, noise=1.0, outputscale=1.0, rank=1024):
+class RandomFourierFeaturesGaussianProcess(torch.nn.Module):
+    def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_outputscale=False, lengthscale=20.0, outputscale=1.0, rank=1024):
         super().__init__()
+        
         self.in_features = in_features
         self.out_features = out_features
         
         self.learnable_lengthscale = learnable_lengthscale
-        self.learnable_noise = learnable_noise
         self.learnable_outputscale = learnable_outputscale
         
         if self.learnable_lengthscale:
-            self.lengthscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(lengthscale))))
+            self.raw_lengthscale = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(lengthscale, dtype=torch.float32))))
         else:
-            self.register_buffer('lengthscale_param', torch.log(torch.expm1(torch.tensor(lengthscale))))
-        
-        if self.learnable_noise:
-            self.noise_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(noise))))
-        else:
-            self.register_buffer('noise_param', torch.log(torch.expm1(torch.tensor(noise))))
+            self.register_buffer('raw_lengthscale', torch.log(torch.expm1(torch.tensor(lengthscale, dtype=torch.float32))))
         
         if self.learnable_outputscale:
-            self.outputscale_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(outputscale))))
+            self.raw_outputscale = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(outputscale, dtype=torch.float32))))
         else:
-            self.register_buffer('outputscale_param', torch.log(torch.expm1(torch.tensor(outputscale))))
+            self.register_buffer('raw_outputscale', torch.log(torch.expm1(torch.tensor(outputscale, dtype=torch.float32))))
                     
         self.rank = rank
         self.register_buffer('feature_weight', torch.randn(self.rank, self.in_features))
@@ -32,65 +27,68 @@ class RandomFeatureGaussianProcess(torch.nn.Module):
         self.linear = torch.nn.Linear(in_features=self.rank, out_features=self.out_features, bias=False)
 
     def featurize(self, h):
-        features = torch.nn.functional.linear(h, (1/self.lengthscale) * self.feature_weight, self.feature_bias)
-        return self.outputscale * (2/self.rank)**0.5 * torch.cos(features)
+        return self.outputscale * (2/self.rank)**0.5 * torch.cos(torch.nn.functional.linear(h, (1/self.lengthscale) * self.feature_weight, self.feature_bias))
         
     def forward(self, h):
         features = self.featurize(h)
         logits = self.linear(features)
         return logits
-    
-    def gaussian_nll_loss(self, logits, labels):
-        batch_size, num_classes = logits.shape
-        return torch.nn.functional.gaussian_nll_loss(logits, labels, self.noise**2 * torch.ones(size=(batch_size,)))
-    
+                                                    
     @property
     def lengthscale(self):
-        return torch.nn.functional.softplus(self.lengthscale_param) + 1e-6
-        
-    @property
-    def noise(self):
-        return torch.nn.functional.softplus(self.noise_param) + 1e-6
+        return torch.nn.functional.softplus(self.raw_lengthscale)
     
     @property
     def outputscale(self):
-        return torch.nn.functional.softplus(self.outputscale_param) + 1e-6
+        return torch.nn.functional.softplus(self.raw_outputscale)
         
 class VariationalLinear(torch.nn.Module):
-    def __init__(self, layer, sigma_param, use_posterior=False):
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
         super().__init__()
         self.layer = layer
-        self.sigma_param = sigma_param
+        self.raw_sigma = raw_sigma
         self.use_posterior = use_posterior
-        
+                
     def forward(self, x):
         if self.training or self.use_posterior:
+            variational_params = self._variational_params()
+            variational_weight, variational_bias = self._unflatten(variational_params)
             return torch.nn.functional.linear(
-                x,
-                self.variational_weight,
-                self.variational_bias,
+                x, 
+                variational_weight, 
+                variational_bias,
             )
-            
-        return self.layer(x)    
+        return self.layer(x)
     
-    @property
-    def variational_weight(self):
-        return self.layer.weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.weight).to(self.layer.weight.device)
+    def _variational_params(self):
+        params = self._flatten()
+        eps = torch.randn_like(params)
+        sigma = torch.nn.functional.softplus(self.raw_sigma)
+        return params + sigma * eps
             
-    @property
-    def variational_bias(self):
-        return self.layer.bias + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.bias).to(self.layer.bias.device) if self.layer.bias is not None else None
-
+    def _flatten(self):
+        return torch.cat([param.view(-1) for param in [self.layer.weight, self.layer.bias] if param is not None])
+    
+    def _unflatten(self, params):
+        out = []
+        for param in [self.layer.weight, self.layer.bias]:
+            out.append(None if param is None else params[:param.numel()].view_as(param))
+            if param is not None:
+                params = params[param.numel():]
+        return out
+     
 class VariationalConv2d(VariationalLinear):
-    def __init__(self, layer, sigma_param, use_posterior=False):
-        super().__init__(layer, sigma_param, use_posterior)
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
+        super().__init__(layer, raw_sigma, use_posterior)
         
     def forward(self, x):
         if self.training or self.use_posterior:
+            variational_params = self._variational_params()
+            variational_weight, variational_bias = self._unflatten(variational_params)
             return torch.nn.functional.conv2d(
                 x,
-                self.variational_weight,
-                self.variational_bias,
+                variational_weight,
+                variational_bias,
                 self.layer.stride,
                 self.layer.padding,
                 self.layer.dilation,
@@ -100,8 +98,8 @@ class VariationalConv2d(VariationalLinear):
         return self.layer(x)
 
 class VariationalBatchNorm2d(VariationalLinear):
-    def __init__(self, layer, sigma_param, use_posterior=False):
-        super().__init__(layer, sigma_param, use_posterior)
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
+        super().__init__(layer, raw_sigma, use_posterior)
         
     def forward(self, x):
         if self.training or self.use_posterior:
@@ -124,47 +122,53 @@ class VariationalBatchNorm2d(VariationalLinear):
             else:
                 bn_training = (self.layer.running_mean is None) and (self.layer.running_var is None)
 
+            variational_params = self._variational_params()
+            variational_weight, variational_bias = self._unflatten(variational_params)
             return torch.nn.functional.batch_norm(
                 x, 
                 self.layer.running_mean if not self.layer.training or self.layer.track_running_stats else None, 
                 self.layer.running_var if not self.layer.training or self.layer.track_running_stats else None, 
-                self.variational_weight,
-                self.variational_bias,
+                variational_weight,
+                variational_bias,
                 bn_training, 
                 exponential_average_factor, 
                 self.layer.eps, 
             )
         
         return self.layer(x)
-    
+
 class VariationalLayerNorm(VariationalLinear):
-    def __init__(self, layer, sigma_param, use_posterior=False):
-        super().__init__(layer, sigma_param, use_posterior)
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
+        super().__init__(layer, raw_sigma, use_posterior)
     
     def forward(self, x):
         if self.training or self.use_posterior:
+            variational_params = self._variational_params()
+            variational_weight, variational_bias = self._unflatten(variational_params)
             return torch.nn.functional.layer_norm(
                 x,
                 self.layer.normalized_shape,
-                self.variational_weight,
-                self.variational_bias,
+                variational_weight,
+                variational_bias,
                 self.layer.eps
             )
             
         return self.layer(x)
     
 class VariationalLayerNorm2d(VariationalLinear):
-    def __init__(self, layer, sigma_param, use_posterior=False):
-        super().__init__(layer, sigma_param, use_posterior)
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
+        super().__init__(layer, raw_sigma, use_posterior)
     
     def forward(self, x):
         if self.training or self.use_posterior:
             x = x.permute(0, 2, 3, 1)
+            variational_params = self._variational_params()
+            variational_weight, variational_bias = self._unflatten(variational_params)
             x = torch.nn.functional.layer_norm(
                 x,
                 self.layer.normalized_shape,
-                self.variational_weight,
-                self.variational_bias,
+                variational_weight,
+                variational_bias,
                 self.layer.eps
             )
             x = x.permute(0, 3, 1, 2)
@@ -173,30 +177,45 @@ class VariationalLayerNorm2d(VariationalLinear):
         return self.layer(x)
     
 class VariationalCNBlock(torch.nn.Module):
-    def __init__(self, layer, sigma_param, use_posterior=False):
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
         super().__init__()
         self.layer = layer
-        self.sigma_param = sigma_param
+        self.raw_sigma = raw_sigma
         self.use_posterior = use_posterior
         
     def forward(self, x):
         if self.training or self.use_posterior:
-            result = self.variational_layer_scale * self.layer.block(x)
+            variational_params = self._variational_params()
+            variational_layer_scale = self._unflatten(variational_params)
+            result = variational_layer_scale * self.layer.block(x)
             result = self.layer.stochastic_depth(result)
             result += x
             return result
     
         return self.layer(x)
+       
+    def _variational_params(self):
+        params = self._flatten()
+        eps = torch.randn_like(params)
+        sigma = torch.nn.functional.softplus(self.raw_sigma)
+        return params + sigma * eps
+            
+    def _flatten(self):
+        return torch.cat([param.view(-1) for param in [self.layer.layer_scale] if param is not None])
     
-    @property
-    def variational_layer_scale(self):
-        return self.layer.layer_scale + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.layer_scale).to(self.layer.layer_scale.device)
-
+    def _unflatten(self, params):
+        out = []
+        for param in [self.layer.layer_scale]:
+            out.append(None if param is None else params[:param.numel()].view_as(param))
+            if param is not None:
+                params = params[param.numel():]
+        return out
+        
 class VariationalMultiheadAttention(torch.nn.Module):
-    def __init__(self, layer, sigma_param, use_posterior=False):
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
         super().__init__()
         self.layer = layer
-        self.sigma_param = sigma_param
+        self.raw_sigma = raw_sigma
         self.use_posterior = use_posterior
 
     def forward(self, query, key, value, key_padding_mask=None, need_weights=True, attn_mask=None, average_attn_weights=True, is_causal=False):
@@ -267,14 +286,16 @@ class VariationalMultiheadAttention(torch.nn.Module):
                 why_not_fast_path = "autocast is enabled"
 
             if not why_not_fast_path:
+                variational_params = self._variational_params()
+                variational_in_proj_weight, variational_in_proj_bias, variational_out_proj_weight, variational_out_proj_bias, variational_bias_k, variational_bias_v, variational_q_proj_weight, variational_k_proj_weight, variational_v_proj_weight = _unflatten(self, variational_params)
                 tensor_args = (
                     query,
                     key,
                     value,
-                    self.variational_in_proj_weight,
-                    self.variational_in_proj_bias,
-                    self.variational_out_proj_weight,
-                    self.variational_out_proj_bias,
+                    variational_in_proj_weight,
+                    variational_in_proj_bias,
+                    variational_out_proj_weight,
+                    variational_out_proj_bias,
                 )
                 if torch.overrides.has_torch_function(tensor_args):
                     why_not_fast_path = "some Tensor argument has_torch_function"
@@ -298,16 +319,18 @@ class VariationalMultiheadAttention(torch.nn.Module):
                     )
 
                     if self.layer.in_proj_bias is not None and self.layer.in_proj_weight is not None:
+                        variational_params = self._variational_params()
+                        variational_in_proj_weight, variational_in_proj_bias, variational_out_proj_weight, variational_out_proj_bias, variational_bias_k, variational_bias_v, variational_q_proj_weight, variational_k_proj_weight, variational_v_proj_weight = _unflatten(self, variational_params)
                         return torch._native_multi_head_attention(
                             query,
                             key,
                             value,
                             self.layer.embed_dim,
                             self.layer.num_heads,
-                            self.variational_in_proj_weight,
-                            self.variational_in_proj_bias,
-                            self.variational_out_proj_weight,
-                            self.variational_out_proj_bias,
+                            variational_in_proj_weight,
+                            variational_in_proj_bias,
+                            variational_out_proj_weight,
+                            variational_out_proj_bias,
                             merged_mask,
                             need_weights,
                             average_attn_weights,
@@ -331,46 +354,50 @@ class VariationalMultiheadAttention(torch.nn.Module):
                     query, key, value = (x.transpose(1, 0) for x in (query, key, value))
 
             if not self.layer._qkv_same_embed_dim:
+                variational_params = self._variational_params()
+                variational_in_proj_weight, variational_in_proj_bias, variational_out_proj_weight, variational_out_proj_bias, variational_bias_k, variational_bias_v, variational_q_proj_weight, variational_k_proj_weight, variational_v_proj_weight = _unflatten(self, variational_params)
                 attn_output, attn_output_weights = torch.nn.functional.multi_head_attention_forward(
                     query,
                     key,
                     value,
                     self.layer.embed_dim,
                     self.layer.num_heads,
-                    self.variational_in_proj_weight,
-                    self.variational_in_proj_bias,
-                    self.variational_bias_k,
-                    self.variational_bias_v,
+                    variational_in_proj_weight,
+                    variational_in_proj_bias,
+                    variational_bias_k,
+                    variational_bias_v,
                     self.layer.add_zero_attn,
                     self.layer.dropout,
-                    self.variational_out_proj_weight,
-                    self.variational_out_proj_bias,
+                    variational_out_proj_weight,
+                    variational_out_proj_bias,
                     training=self.layer.training,
                     key_padding_mask=key_padding_mask,
                     need_weights=need_weights,
                     attn_mask=attn_mask,
                     use_separate_proj_weight=True,
-                    q_proj_weight=self.variational_q_proj_weight,
-                    k_proj_weight=self.variational_k_proj_weight,
-                    v_proj_weight=self.variational_v_proj_weight,
+                    q_proj_weight=variational_q_proj_weight,
+                    k_proj_weight=variational_k_proj_weight,
+                    v_proj_weight=variational_v_proj_weight,
                     average_attn_weights=average_attn_weights,
                     is_causal=is_causal,
                 )
             else:
+                variational_params = self._variational_params()
+                variational_in_proj_weight, variational_in_proj_bias, variational_out_proj_weight, variational_out_proj_bias, variational_bias_k, variational_bias_v, variational_q_proj_weight, variational_k_proj_weight, variational_v_proj_weight = _unflatten(self, variational_params)
                 attn_output, attn_output_weights = torch.nn.functional.multi_head_attention_forward(
                     query,
                     key,
                     value,
                     self.layer.embed_dim,
                     self.layer.num_heads,
-                    self.variational_in_proj_weight,
-                    self.variational_in_proj_bias,
-                    self.variational_bias_k,
-                    self.variational_bias_v,
+                    variational_in_proj_weight,
+                    variational_in_proj_bias,
+                    variational_bias_k,
+                    variational_bias_v,
                     self.layer.add_zero_attn,
                     self.layer.dropout,
-                    self.variational_out_proj_weight,
-                    self.variational_out_proj_bias,
+                    variational_out_proj_weight,
+                    variational_out_proj_bias,
                     training=self.layer.training,
                     key_padding_mask=key_padding_mask,
                     need_weights=need_weights,
@@ -385,52 +412,37 @@ class VariationalMultiheadAttention(torch.nn.Module):
             
         return self.layer(query, key, value, key_padding_mask, need_weights, attn_mask, average_attn_weights, is_causal)
     
-    @property
-    def variational_in_proj_weight(self):
-        return self.layer.in_proj_weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.in_proj_weight).to(self.layer.in_proj_weight.device)
-            
-    @property
-    def variational_in_proj_bias(self):
-        return self.layer.in_proj_bias + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.in_proj_bias).to(self.layer.in_proj_bias.device) if self.layer.in_proj_bias is not None else None
-
-    @property
-    def variational_out_proj_weight(self):
-        return self.layer.out_proj.weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.out_proj.weight).to(self.layer.out_proj.weight.device)
-            
-    @property
-    def variational_out_proj_bias(self):
-        return self.layer.out_proj.bias + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.out_proj.bias).to(self.layer.out_proj.bias.device) if self.layer.out_proj.bias is not None else None
-
-    @property
-    def variational_bias_k(self):
-        return self.layer.bias_k + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.bias_k).to(self.layer.bias_k.device) if self.layer.bias_k is not None else None
-
-    @property
-    def variational_bias_v(self):
-        return self.layer.bias_v + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.bias_v).to(self.layer.bias_v.device) if self.layer.bias_v is not None else None
-
-    @property
-    def variational_q_proj_weight(self):
-        return self.layer.q_proj_weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.q_proj_weight).to(self.layer.q_proj_weight.device) if self.layer.q_proj_weight is not None else None
+    def _variational_params(self):
+        params = self._flatten()
+        eps = torch.randn_like(params)
+        sigma = torch.nn.functional.softplus(self.raw_sigma)
+        return params + sigma * eps
     
-    @property
-    def variational_k_proj_weight(self):
-        return self.layer.k_proj_weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.k_proj_weight).to(self.layer.k_proj_weight.device) if self.layer.k_proj_weight is not None else None
+    def _flatten(self):
+        return torch.cat([param.view(-1) for param in [self.layer.in_proj_weight, self.layer.in_proj_bias, self.layer.out_proj_weight, self.layer.out_proj_bias, self.layer.bias_k, self.layer.bias_v, self.layer.q_proj_weight, self.layer.k_proj_weight, self.layer.v_proj_weight] if param is not None])
     
-    @property
-    def variational_v_proj_weight(self):
-        return self.layer.v_proj_weight + torch.nn.functional.softplus(self.sigma_param) * torch.randn_like(self.layer.v_proj_weight).to(self.layer.v_proj_weight.device) if self.layer.v_proj_weight is not None else None
-    
-class VariationalEmbedding(VariationalLinear):
-    def __init__(self, layer, sigma_param, use_posterior=False):
-        super().__init__(layer, sigma_param, use_posterior)
+    def _unflatten(self, params):
+        out = []
+        for param in [self.layer.in_proj_weight, self.layer.in_proj_bias, self.layer.out_proj_weight, self.layer.out_proj_bias, self.layer.bias_k, self.layer.bias_v, self.layer.q_proj_weight, self.layer.k_proj_weight, self.layer.v_proj_weight]:
+            out.append(None if param is None else params[:param.numel()].view_as(param))
+            if param is not None:
+                params = params[param.numel():]
+        return out
+
+class VariationalEmbedding(torch.nn.Module):
+    def __init__(self, layer, raw_sigma=None, use_posterior=False):
+        super().__init__()
+        self.layer = layer
+        self.raw_sigma = raw_sigma
+        self.use_posterior = use_posterior
 
     def forward(self, x):
         if self.training or self.use_posterior:
-            
+            variational_params = self._variational_params()
+            variational_weight = self._unflatten(variational_params)
             return torch.nn.functional.embedding(
                 x,
-                self.variational_weight,
+                variational_weight,
                 self.layer.padding_idx,
                 self.layer.max_norm,
                 self.layer.norm_type,
@@ -440,3 +452,20 @@ class VariationalEmbedding(VariationalLinear):
         
         return self.layer(x)
     
+    def _variational_params(self):
+        params = self._flatten()
+        eps = torch.randn_like(params)
+        sigma = torch.nn.functional.softplus(self.raw_sigma)
+        return params + sigma * eps
+    
+    def _flatten(self):
+        return torch.cat([param.view(-1) for param in [self.layer.weight] if param is not None])
+    
+    def _unflatten(self, params):
+        out = []
+        for param in [self.layer.weight]:
+            out.append(None if param is None else params[:param.numel()].view_as(param))
+            if param is not None:
+                params = params[param.numel():]
+        return out
+        

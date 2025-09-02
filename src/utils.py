@@ -7,10 +7,6 @@ import torchvision
 import torchmetrics
 # Importing our custom module(s)
 import layers
-
-def makedir_if_not_exist(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
         
 def worker_init_fn(worker_id):
     # This worker initialization function sets CPU affinity for each worker to 
@@ -101,7 +97,65 @@ def get_cifar10_datasets(dataset_directory, n, tune, random_state):
         test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
         return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
     
-def get_oxfordiiit_pet_datasets(dataset_directory, n, tune, random_state):
+def get_flower102_datasets(dataset_directory, n, tune, random_state):
+
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.ToTensor(),
+        torchvision.transforms.Resize(size=(256, 256)),
+    ])
+    full_train_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='train', transform=transform, download=True)
+    full_test_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='test', transform=transform, download=True)
+
+    if n == len(full_train_dataset):
+        train_and_val_indices = np.arange(0, len(full_train_dataset))
+    else:
+        train_and_val_indices, _ = train_test_split(
+            np.arange(0, len(full_train_dataset)), 
+            test_size=None, 
+            train_size=n, 
+            random_state=random_state, 
+            shuffle=True, 
+            stratify=np.array(full_train_dataset._labels),
+        )
+
+    val_size = int((1/5) * n)
+    train_indices, val_indices = train_test_split(
+        train_and_val_indices, 
+        test_size=val_size, 
+        train_size=n-val_size, 
+        random_state=random_state, 
+        shuffle=True, 
+        stratify=np.array(full_train_dataset._labels)[train_and_val_indices],
+    )
+
+    if tune:
+        mean, std = get_mean_and_std(full_train_dataset, train_indices)
+    else:
+        mean, std = get_mean_and_std(full_train_dataset, train_and_val_indices)
+
+    augmented_transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.RandomCrop(size=(224, 224)),
+        torchvision.transforms.RandomHorizontalFlip(),
+    ])
+    
+    transform = torchvision.transforms.Compose([
+        torchvision.transforms.Normalize(mean=mean, std=std),
+        torchvision.transforms.CenterCrop(size=(224, 224)),
+    ])
+
+    if tune:
+        augmented_train_dataset = TensorSubset(full_train_dataset, train_indices, augmented_transform)
+        train_dataset = TensorSubset(full_train_dataset, train_indices, transform)
+        val_dataset = TensorSubset(full_train_dataset, val_indices, transform)
+        return augmented_train_dataset, train_dataset, val_dataset
+    else:
+        augmented_train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, augmented_transform)
+        train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, transform)
+        test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
+        return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
+    
+def get_pet37_datasets(dataset_directory, n, tune, random_state):
 
     transform = torchvision.transforms.Compose([
         torchvision.transforms.ToTensor(),
@@ -162,64 +216,6 @@ def get_oxfordiiit_pet_datasets(dataset_directory, n, tune, random_state):
         test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
         return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
     
-def get_flowers_102_datasets(dataset_directory, n, tune, random_state):
-
-    transform = torchvision.transforms.Compose([
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Resize(size=(256, 256)),
-    ])
-    full_train_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='train', transform=transform, download=True)
-    full_test_dataset = torchvision.datasets.Flowers102(root=dataset_directory, split='test', transform=transform, download=True)
-
-    if n == len(full_train_dataset):
-        train_and_val_indices = np.arange(0, len(full_train_dataset))
-    else:
-        train_and_val_indices, _ = train_test_split(
-            np.arange(0, len(full_train_dataset)), 
-            test_size=None, 
-            train_size=n, 
-            random_state=random_state, 
-            shuffle=True, 
-            stratify=np.array(full_train_dataset._labels),
-        )
-
-    val_size = int((1/5) * n)
-    train_indices, val_indices = train_test_split(
-        train_and_val_indices, 
-        test_size=val_size, 
-        train_size=n-val_size, 
-        random_state=random_state, 
-        shuffle=True, 
-        stratify=np.array(full_train_dataset._labels)[train_and_val_indices],
-    )
-
-    if tune:
-        mean, std = get_mean_and_std(full_train_dataset, train_indices)
-    else:
-        mean, std = get_mean_and_std(full_train_dataset, train_and_val_indices)
-
-    augmented_transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=mean, std=std),
-        torchvision.transforms.RandomCrop(size=(224, 224)),
-        torchvision.transforms.RandomHorizontalFlip(),
-    ])
-    
-    transform = torchvision.transforms.Compose([
-        torchvision.transforms.Normalize(mean=mean, std=std),
-        torchvision.transforms.CenterCrop(size=(224, 224)),
-    ])
-
-    if tune:
-        augmented_train_dataset = TensorSubset(full_train_dataset, train_indices, augmented_transform)
-        train_dataset = TensorSubset(full_train_dataset, train_indices, transform)
-        val_dataset = TensorSubset(full_train_dataset, val_indices, transform)
-        return augmented_train_dataset, train_dataset, val_dataset
-    else:
-        augmented_train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, augmented_transform)
-        train_and_val_dataset = TensorSubset(full_train_dataset, train_and_val_indices, transform)
-        test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
-        return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
-
 def get_fgvcaircraft_datasets(dataset_directory, n, tune, random_state):
 
     transform = torchvision.transforms.Compose([
@@ -278,27 +274,27 @@ def get_fgvcaircraft_datasets(dataset_directory, n, tune, random_state):
         test_dataset = TensorSubset(full_test_dataset, range(len(full_test_dataset)), transform)
         return augmented_train_and_val_dataset, train_and_val_dataset, test_dataset
     
-def add_variational_layers(module, sigma_param):
+def add_variational_layers(module, raw_sigma):
     for name, child in module.named_children():
         if isinstance(child, torch.nn.Linear):
-            setattr(module, name, layers.VariationalLinear(child, sigma_param))
+            setattr(module, name, layers.VariationalLinear(child, raw_sigma))
         elif isinstance(child, torch.nn.Conv2d):
-            setattr(module, name, layers.VariationalConv2d(child, sigma_param))
+            setattr(module, name, layers.VariationalConv2d(child, raw_sigma))
         elif isinstance(child, torch.nn.BatchNorm2d):
-            setattr(module, name, layers.VariationalBatchNorm2d(child, sigma_param))
+            setattr(module, name, layers.VariationalBatchNorm2d(child, raw_sigma))
         elif isinstance(child, torchvision.models.convnext.LayerNorm2d):
-            setattr(module, name, layers.VariationalLayerNorm2d(child, sigma_param))
+            setattr(module, name, layers.VariationalLayerNorm2d(child, raw_sigma))
         elif isinstance(child, torch.nn.LayerNorm):
-            setattr(module, name, layers.VariationalLayerNorm(child, sigma_param))
+            setattr(module, name, layers.VariationalLayerNorm(child, raw_sigma))
         elif isinstance(child, torchvision.models.convnext.CNBlock):
-            setattr(module, name, layers.VariationalCNBlock(child, sigma_param))
-            add_variational_layers(child, sigma_param)
+            setattr(module, name, layers.VariationalCNBlock(child, raw_sigma))
+            add_variational_layers(child, raw_sigma)
         elif isinstance(child, torch.nn.MultiheadAttention):
-            setattr(module, name, layers.VariationalMultiheadAttention(child, sigma_param))
+            setattr(module, name, layers.VariationalMultiheadAttention(child, raw_sigma))
         elif isinstance(child, torch.nn.Embedding):
-            setattr(module, name, layers.VariationalEmbedding(child, sigma_param))
+            setattr(module, name, layers.VariationalEmbedding(child, raw_sigma))
         else:
-            add_variational_layers(child, sigma_param)
+            add_variational_layers(child, raw_sigma)
             
 def use_posterior(self, flag):
     for child in self.modules():
@@ -309,23 +305,42 @@ def use_posterior(self, flag):
             layers.VariationalLayerNorm2d,
             layers.VariationalLayerNorm,
             layers.VariationalCNBlock,
+            layers.VariationalMultiheadAttention,
+            layers.VariationalEmbedding,
         )):
             child.use_posterior = flag
-    
-def flatten_params(model, excluded_params=['lengthscale_param', 'noise_param', 'outputscale_param', 'sigma_param']):
+            
+def assign_diag_raw_sigma(model, raw_sigma):
+    idx = 0
+    for child in model.modules():
+        if hasattr(child, "_flatten"):
+            num_params = len(child._flatten())
+            raw_sigma_slice = raw_sigma[idx:idx + num_params]
+            child.raw_sigma = raw_sigma_slice
+            idx += num_params
+            
+def flatten_params(model, excluded_params=["raw_lengthscale", "raw_noise", "raw_outputscale", "raw_sigma", "raw_tau"]):
     return torch.cat([param.view(-1) for name, param in model.named_parameters() if param.requires_grad and name not in excluded_params])
-    
-def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_classes=10, num_samples=1):
 
-    device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
+def unflatten_params(model, params, excluded_params=["raw_lengthscale", "raw_noise", "raw_outputscale", "raw_sigma", "raw_tau"]):
+    index = 0
+    for name, param in model.named_parameters():
+        if param.requires_grad and name not in excluded_params:
+            numel = param.numel()
+            param.data.copy_(params[index:index + numel].view_as(param))
+            index += numel
+
+def flatten_grads(model, excluded_params=["raw_lengthscale", "raw_noise", "raw_outputscale", "raw_sigma", "raw_tau"]):
+    return torch.cat([param.grad.view(-1) for name, param in model.named_parameters() if param.requires_grad and name not in excluded_params])
+
+def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, num_samples=1):
+    
+    device = torch.device("cuda:0" if next(model.parameters()).is_cuda else "cpu")
     model.train()
 
-    acc = torchmetrics.Accuracy(task='multiclass', num_classes=num_classes, average='macro')
-    #acc = torchmetrics.AUROC(task='multiclass', num_classes=num_classes, average='macro')
-    
     dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
-    metrics = {'acc': 0.0, 'labels': [], 'lambda': 0.0, 'logits': [], 'loss': 0.0, 'nll': 0.0, 'tau': 0.0}
-                    
+    metrics = {}
+    
     for images, labels in dataloader:
         
         batch_size = len(images)
@@ -333,80 +348,57 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
         if device.type == 'cuda':
             images, labels = images.to(device), labels.to(device)
 
-        model.zero_grad()
+        optimizer.zero_grad()
         params = flatten_params(model)
-        for sample_index in range(num_samples):
+
+        for _ in range(num_samples):
+
             logits = model(images)
-            losses = criterion(labels, logits, params, N=len(dataloader.dataset))
-            losses['loss'].backward()
-            
-        # TODO: Average metrics over num_samples instead of returning metrics for last sample.
-        if num_samples > 1:
-            for param in model.parameters():
+            losses = criterion(logits, labels, params, len(dataloader.dataset))
+            losses["loss"].backward()
+
+            for key, value in losses.items():
+                metrics[key] = metrics.get(key, 0.0) + (batch_size / dataset_size) * (1 / num_samples) * value.item()
+
+        for group in optimizer.param_groups:
+            for param in group["params"]:
                 if param.grad is not None:
                     param.grad.data.mul_(1/num_samples)
-                
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+        for group in optimizer.param_groups:
+            torch.nn.utils.clip_grad_norm_(group["params"], max_norm=1.0)
+            
         optimizer.step()
         
         if lr_scheduler:
             lr_scheduler.step()
-
-        metrics['loss'] += (batch_size/dataset_size)*losses['loss'].item()
-        metrics['nll'] += (batch_size/dataset_size)*losses['nll'].item()
-        
-        # Note: Added for DE ELBo
-        metrics['lambda_star'] = losses.get('lambda_star')
-        metrics['tau_star'] = losses.get('tau_star')
-                    
-        if device.type == 'cuda':
-            labels, logits = labels.detach().cpu(), logits.detach().cpu()
-
-        for label, logit in zip(labels, logits):
-            metrics['labels'].append(label)
-            metrics['logits'].append(logit)
                 
-    labels = torch.stack(metrics['labels'])
-    logits = torch.stack(metrics['logits'])
-    metrics['acc'] = acc(logits, labels).item()
-            
     return metrics
 
-def evaluate(model, criterion, dataloader, num_classes=10):
+def evaluate(model, criterion, dataloader, num_samples=1):
     
-    device = torch.device('cuda:0' if next(model.parameters()).is_cuda else 'cpu')
+    device = torch.device("cuda:0" if next(model.parameters()).is_cuda else "cpu")
     model.eval()
-    
-    acc = torchmetrics.Accuracy(task='multiclass', num_classes=num_classes, average='macro')
-    #acc = torchmetrics.AUROC(task='multiclass', num_classes=num_classes, average='macro')
 
     dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
-    metrics = {'acc': 0.0, 'labels': [], 'logits': [], 'loss': 0.0, 'nll': 0.0}
-            
-    with torch.no_grad():
-        for images, labels in dataloader:
-            
-            batch_size = len(images)
-                        
-            if device.type == 'cuda':
-                images, labels = images.to(device), labels.to(device)
-            
-            params = flatten_params(model)
-            logits = model(images)
-            losses = criterion(labels, logits, params, N=len(dataloader.dataset))
-
-            metrics['loss'] += (batch_size/dataset_size)*losses['loss'].item()
-            metrics['nll'] += (batch_size/dataset_size)*losses['nll'].item()
-
-            if device.type == 'cuda':
-                labels, logits = labels.detach().cpu(), logits.detach().cpu()
+    metrics = {}
     
-            for label, logit in zip(labels, logits):
-                metrics['labels'].append(label)
-                metrics['logits'].append(logit)
-
-        labels = torch.stack(metrics['labels'])
-        logits = torch.stack(metrics['logits'])
-        metrics['acc'] = acc(logits, labels).item()
+    for images, labels in dataloader:
         
+        batch_size = len(images)
+                                
+        if device.type == 'cuda':
+            images, labels = images.to(device), labels.to(device)
+
+        params = flatten_params(model)
+
+        for _ in range(num_samples):
+
+            logits = model(images)
+            losses = criterion(logits, labels, params, len(dataloader.dataset))
+            losses["loss"].backward()
+
+            for key, value in losses.items():
+                metrics[key] = metrics.get(key, 0.0) + (batch_size / dataset_size) * (1 / num_samples) * value.item()
+    
     return metrics

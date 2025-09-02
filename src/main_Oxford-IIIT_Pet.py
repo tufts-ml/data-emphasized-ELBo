@@ -72,9 +72,9 @@ if __name__=='__main__':
         model.sigma_param = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(1e-4, device=device))))
         utils.add_variational_layers(model, model.sigma_param)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
-        bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
-        bb_loc = torch.zeros_like(bb_loc).to(device)
-        criterion = losses.L2KappaELBoLoss(bb_loc, args.kappa, model.sigma_param)
+        #bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
+        #bb_loc = torch.zeros_like(bb_loc).to(device)
+        criterion = losses.L2ZeroKappaELBoLoss(args.kappa, model.sigma_param)
     elif args.criterion == 'l2-sp' and not args.ELBo:
         bb_loc = torch.load(f'{args.prior_directory}/{args.prior_type}_mean.pt', map_location=torch.device('cpu'), weights_only=False).to(device)
         criterion = losses.L2SPLoss(args.alpha, bb_loc, args.beta)

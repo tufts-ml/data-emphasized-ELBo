@@ -119,7 +119,8 @@ if __name__=='__main__':
     if not args.ELBo:
         columns = ['epoch', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
     else:
-        columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
+        #columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
+        columns = ['epoch', 'lambda_star', 'sigma', 'tau_star', 'train_acc', 'train_kl', 'train_loss', 'train_nll', 'train_sec/epoch', 'train_eval_acc', 'train_eval_kl', 'train_eval_loss', 'train_eval_nll', 'val_or_test_acc', 'val_or_test_kl', 'val_or_test_loss', 'val_or_test_nll'] #
         #columns = ['epoch', 'lambda_star', 'sigma', 'train_acc', 'train_loss', 'train_nll', 'train_sec/epoch', 'val_or_test_acc', 'val_or_test_loss', 'val_or_test_nll']
 
     model_history_df = pd.DataFrame(columns=columns)
@@ -138,17 +139,22 @@ if __name__=='__main__':
                 model.use_posterior(True)
                 num_samples = 10
                 sample_metrics = [utils.evaluate(model, criterion, train_loader, num_classes=num_classes) for _ in range(num_samples)]
-                train_metrics = {key: sum(metrics[key] for metrics in sample_metrics) / num_samples for key in ['acc', 'loss', 'nll']}
+                train_metrics = {key: sum(metrics[key] for metrics in sample_metrics) / num_samples for key in ['acc', 'kl', 'loss', 'nll']}
                 model.use_posterior(False)
                 val_or_test_metrics = utils.evaluate(model, criterion, val_or_test_loader, num_classes=num_classes)
         else:
-            val_or_test_metrics = {'acc': 0.0, 'loss': 0.0, 'nll': 0.0}
+            val_or_test_metrics = {'acc': 0.0, 'kl': 0.0, 'loss': 0.0, 'nll': 0.0}
+            model.use_posterior(True) #
+            train_metrics = utils.evaluate(model, criterion, train_loader, num_classes=num_classes) #
+            model.use_posterior(False) #
+            val_or_test_metrics = utils.evaluate(model, criterion, val_or_test_loader, num_classes=num_classes) #
             
                 
         if not args.ELBo:
             row = [epoch, train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
         else:
-            row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), augmented_train_metrics['tau_star'].item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
+            #row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), augmented_train_metrics['tau_star'].item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
+            row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), augmented_train_metrics['tau_star'].item(), augmented_train_metrics['acc'], augmented_train_metrics['kl'], augmented_train_metrics['loss'], augmented_train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, train_metrics['acc'], train_metrics['kl'], train_metrics['loss'], train_metrics['nll'], val_or_test_metrics['acc'], val_or_test_metrics['kl'], val_or_test_metrics['loss'], val_or_test_metrics['nll']] #
             #row = [epoch, augmented_train_metrics['lambda_star'].item(), torch.nn.functional.softplus(model.sigma_param).item(), train_metrics['acc'], train_metrics['loss'], train_metrics['nll'], train_epoch_end_time-train_epoch_start_time, val_or_test_metrics['acc'], val_or_test_metrics['loss'], val_or_test_metrics['nll']]
             
         model_history_df.loc[epoch] = row
