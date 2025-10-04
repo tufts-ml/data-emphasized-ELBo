@@ -1,5 +1,9 @@
+import functools
 # PyTorch
 import torch
+import torchvision
+# Importing our custom module(s)
+import utils
 
 class RandomFourierFeaturesGaussianProcess(torch.nn.Module):
     def __init__(self, in_features, out_features, learnable_lengthscale=False, learnable_outputscale=False, lengthscale=20.0, outputscale=1.0, rank=1024):
@@ -12,18 +16,18 @@ class RandomFourierFeaturesGaussianProcess(torch.nn.Module):
         self.learnable_outputscale = learnable_outputscale
         
         if self.learnable_lengthscale:
-            self.raw_lengthscale = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(lengthscale, dtype=torch.float32))))
+            self.raw_lengthscale = torch.nn.Parameter(utils.inv_softplus(torch.tensor(lengthscale, dtype=torch.float32)))
         else:
-            self.register_buffer('raw_lengthscale', torch.log(torch.expm1(torch.tensor(lengthscale, dtype=torch.float32))))
+            self.register_buffer("raw_lengthscale", utils.inv_softplus(lengthscale, dtype=torch.float32))
         
         if self.learnable_outputscale:
-            self.raw_outputscale = torch.nn.Parameter(torch.log(torch.expm1(torch.tensor(outputscale, dtype=torch.float32))))
+            self.raw_outputscale = torch.nn.Parameter(utils.inv_softplus(torch.tensor(outputscale, dtype=torch.float32)))
         else:
-            self.register_buffer('raw_outputscale', torch.log(torch.expm1(torch.tensor(outputscale, dtype=torch.float32))))
+            self.register_buffer("raw_outputscale", utils.inv_softplus(torch.tensor(outputscale, dtype=torch.float32)))
                     
         self.rank = rank
-        self.register_buffer('feature_weight', torch.randn(self.rank, self.in_features))
-        self.register_buffer('feature_bias', 2 * torch.pi * torch.rand(self.rank))
+        self.register_buffer("feature_weight", torch.randn(self.rank, self.in_features))
+        self.register_buffer("feature_bias", 2 * torch.pi * torch.rand(self.rank))
         self.linear = torch.nn.Linear(in_features=self.rank, out_features=self.out_features, bias=False)
 
     def featurize(self, h):
@@ -41,7 +45,32 @@ class RandomFourierFeaturesGaussianProcess(torch.nn.Module):
     @property
     def outputscale(self):
         return torch.nn.functional.softplus(self.raw_outputscale)
-        
+    
+class CNBlock(torch.nn.Module):
+    def __init__(self, dim, layer_scale, stochastic_depth_prob, norm_layer=None):
+        super().__init__()
+        if norm_layer is None:
+            norm_layer = functools.partial(torch.nn.LayerNorm, eps=1e-6)
+
+        self.layer_scale = torch.nn.Conv2d(dim, dim, kernel_size=1, groups=dim, bias=False)
+        self.layer_scale.weight.data.fill_(layer_scale)
+        self.block = torch.nn.Sequential(
+            torch.nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim, bias=True),
+            torchvision.ops.misc.Permute([0, 2, 3, 1]),
+            norm_layer(dim),
+            torch.nn.Linear(in_features=dim, out_features=4 * dim, bias=True),
+            torch.nn.GELU(),
+            torch.nn.Linear(in_features=4 * dim, out_features=dim, bias=True),
+            torchvision.ops.misc.Permute([0, 3, 1, 2]),
+        )
+        self.stochastic_depth = torchvision.ops.StochasticDepth(stochastic_depth_prob, "row")
+
+    def forward(self, input):
+        result = self.layer_scale(self.block(input))
+        result = self.stochastic_depth(result)
+        result += input
+        return result
+    
 class VariationalLinear(torch.nn.Module):
     def __init__(self, layer, raw_sigma=None, use_posterior=False):
         super().__init__()

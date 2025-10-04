@@ -1,10 +1,8 @@
-# data-emphasized-ELBo
+# data-emphasized-ELBO
 [Learning the Regularization Strength for Deep Fine-Tuning via a Data-Emphasized Variational Objective](https://arxiv.org/abs/2410.19675) by Ethan Harvey, Mikhail Petrov, and Michael C. Hughes
 
-[![PWC](https://img.shields.io/endpoint.svg?url=https://paperswithcode.com/badge/learning-hyperparameters-via-a-data/image-classification-on-cifar-10)](https://paperswithcode.com/sota/image-classification-on-cifar-10?p=learning-hyperparameters-via-a-data)
-
 ![Figure 2](./notebooks/computational_time_comparison.png)
-Figure 2: Test-set accuracy on CIFAR-10 (top row) and Oxford-IIIT Pet (bottom row) over training time for L2-SP with *MAP + grid search (GS)* and our *data-emphasized ELBo* (DE ELBo). We run each method on 3 separate training sets of size N (3 different marker styles). **Takeaway: Our DE ELBo achieves as good or better performance at small dataset sizes and similar performance at large dataset sizes with far less compute time.** To make the blue curves, we did the full grid search once (markers). Then, at each given shorter compute time, we subsampled a fraction of all hyperparameter configurations with that runtime and chose the best via validation NLL. Averaging this over 500 subsamples at each runtime created each blue line.
+Figure 3: Test accuracy over time for L2-SP transfer learning methods. We run each method on 3 separate train sets of size $N$ (3 marker styles). Each panel shows a distinct task: ConvNeXt-Tiny fine-tuned on CIFAR-10, Flower-102, and Pet-37 and BERT-base fine-tuned on News-4. We compare MAP + GS, MAP + BO, diagEF LA-LML, diagEF LA-CLML, iso ELBO, and iso DE-ELBO (ours). **Takeaway: After just a few hours, iso DE-ELBO reaches as good or better performance at small data sizes and similar performance at large sizes, even when other methods are given many additional hours.**
 
 ## Citation
 ```bibtex

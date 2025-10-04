@@ -1,12 +1,17 @@
 import os
+import copy
 import numpy as np
 from sklearn.model_selection import train_test_split
+import scipy
 # PyTorch
 import torch
 import torchvision
 import torchmetrics
 # Importing our custom module(s)
 import layers
+
+def inv_softplus(x):
+    return x + torch.log(-torch.expm1(-x))
         
 def worker_init_fn(worker_id):
     # This worker initialization function sets CPU affinity for each worker to 
@@ -315,9 +320,49 @@ def assign_diag_raw_sigma(model, raw_sigma):
     for child in model.modules():
         if hasattr(child, "_flatten"):
             num_params = len(child._flatten())
-            raw_sigma_slice = raw_sigma[idx:idx + num_params]
+            raw_sigma_slice = raw_sigma[idx:idx+num_params]
             child.raw_sigma = raw_sigma_slice
             idx += num_params
+            
+def replace_layernorm2d(module):
+    for name, child in module.named_children():
+        if isinstance(child, torchvision.models.convnext.LayerNorm2d):
+            device = next(child.parameters()).device
+            new_norm = torch.nn.LayerNorm(
+                child.normalized_shape, eps=child.eps, elementwise_affine=child.elementwise_affine
+            ).to(device)
+            if child.elementwise_affine:
+                new_norm.weight.data.copy_(child.weight.data)
+                new_norm.bias.data.copy_(child.bias.data)
+
+            new_child = torch.nn.Sequential(
+                torchvision.ops.misc.Permute([0, 2, 3, 1]),
+                new_norm,
+                torchvision.ops.misc.Permute([0, 3, 1, 2]),
+            )
+            setattr(module, name, new_child)
+        else:
+            replace_layernorm2d(child)
+            
+def replace_cnblock(model):
+    for stage_idx, stage in enumerate(model.features):
+        for block_idx, block in enumerate(stage):
+            if isinstance(block, torchvision.models.convnext.CNBlock):
+                dim = block.layer_scale.shape[0]
+                device = next(block.parameters()).device
+                new_block = layers.CNBlock(
+                    dim=dim,
+                    layer_scale=1.0,
+                    stochastic_depth_prob=block.stochastic_depth.p,
+                    norm_layer=lambda _: torch.nn.LayerNorm(
+                        normalized_shape=block.block[2].normalized_shape, 
+                        eps=block.block[2].eps,
+                        elementwise_affine=block.block[2].elementwise_affine
+                    )
+                ).to(device)
+                new_block.block.load_state_dict(block.block.state_dict())
+                new_block.layer_scale.weight.data = block.layer_scale.view(-1, 1, 1, 1)
+                model.features[stage_idx][block_idx] = new_block
             
 def flatten_params(model, excluded_params=["raw_lengthscale", "raw_noise", "raw_outputscale", "raw_sigma", "raw_tau"]):
     return torch.cat([param.view(-1) for name, param in model.named_parameters() if param.requires_grad and name not in excluded_params])
@@ -327,7 +372,7 @@ def unflatten_params(model, params, excluded_params=["raw_lengthscale", "raw_noi
     for name, param in model.named_parameters():
         if param.requires_grad and name not in excluded_params:
             numel = param.numel()
-            param.data.copy_(params[index:index + numel].view_as(param))
+            param.data.copy_(params[index:index+numel].view_as(param))
             index += numel
 
 def flatten_grads(model, excluded_params=["raw_lengthscale", "raw_noise", "raw_outputscale", "raw_sigma", "raw_tau"]):
@@ -339,7 +384,7 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
     model.train()
 
     dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
-    metrics = {}
+    metrics = {"probs": [], "labels": []}
     
     for images, labels in dataloader:
         
@@ -351,6 +396,7 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
         optimizer.zero_grad()
         params = flatten_params(model)
 
+        sample_probs = []
         for _ in range(num_samples):
 
             logits = model(images)
@@ -359,11 +405,15 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
 
             for key, value in losses.items():
                 metrics[key] = metrics.get(key, 0.0) + (batch_size / dataset_size) * (1 / num_samples) * value.item()
+                
+            probs = torch.nn.functional.softmax(logits, dim=-1)
+            sample_probs.append(probs.detach().cpu().numpy())
 
-        for group in optimizer.param_groups:
-            for param in group["params"]:
-                if param.grad is not None:
-                    param.grad.data.mul_(1/num_samples)
+        if num_samples > 1:
+            for group in optimizer.param_groups:
+                for param in group["params"]:
+                    if param.grad is not None:
+                        param.grad.data.mul_(1/num_samples)
 
         for group in optimizer.param_groups:
             torch.nn.utils.clip_grad_norm_(group["params"], max_norm=1.0)
@@ -372,7 +422,17 @@ def train_one_epoch(model, criterion, optimizer, dataloader, lr_scheduler=None, 
         
         if lr_scheduler:
             lr_scheduler.step()
-                
+            
+        metrics["probs"].append(np.stack(sample_probs, axis=1))
+        metrics["labels"].append(labels.detach().cpu().numpy())
+        
+    metrics["probs"] = np.concatenate(metrics["probs"], axis=0)
+    metrics["labels"] = np.concatenate(metrics["labels"], axis=0)
+
+    dataset_size, num_samples, num_classes = metrics["probs"].shape
+    bma_preds = metrics["probs"].mean(axis=1).argmax(axis=-1)
+    metrics["acc"] = np.mean([(bma_preds[metrics["labels"] == c] == c).mean() for c in range(num_classes)])
+                    
     return metrics
 
 def evaluate(model, criterion, dataloader, num_samples=1):
@@ -381,24 +441,83 @@ def evaluate(model, criterion, dataloader, num_samples=1):
     model.eval()
 
     dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
-    metrics = {}
+    metrics = {"probs": [], "labels": []}
     
-    for images, labels in dataloader:
+    with torch.no_grad():
+        for images, labels in dataloader:
+
+            batch_size = len(images)
+
+            if device.type == 'cuda':
+                images, labels = images.to(device), labels.to(device)
+
+            params = flatten_params(model)
+
+            sample_probs = []
+            for _ in range(num_samples):
+
+                logits = model(images)
+                losses = criterion(logits, labels, params, len(dataloader.dataset))
+
+                for key, value in losses.items():
+                    metrics[key] = metrics.get(key, 0.0) + (batch_size / dataset_size) * (1 / num_samples) * value.item()
+                    
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                sample_probs.append(probs.detach().cpu().numpy())
+                
+            metrics["probs"].append(np.stack(sample_probs, axis=1))
+            metrics["labels"].append(labels.detach().cpu().numpy())
+            
+        metrics["probs"] = np.concatenate(metrics["probs"], axis=0)
+        metrics["labels"] = np.concatenate(metrics["labels"], axis=0)
         
-        batch_size = len(images)
-                                
-        if device.type == 'cuda':
-            images, labels = images.to(device), labels.to(device)
+        dataset_size, num_samples, num_classes = metrics["probs"].shape
+        bma_preds = metrics["probs"].mean(axis=1).argmax(axis=-1)
+        metrics["acc"] = np.mean([(bma_preds[metrics["labels"] == c] == c).mean() for c in range(num_classes)])
+        
+    return metrics
 
-        params = flatten_params(model)
+def evaluate_clml(model, la, dataloader, num_samples=1, temp=1.0):
+    
+    device = torch.device("cuda:0" if next(model.parameters()).is_cuda else "cpu")
+    model.eval()
 
-        for _ in range(num_samples):
+    dataset_size = len(dataloader) * dataloader.batch_size if dataloader.drop_last else len(dataloader.dataset)
+    metrics = {"probs": [], "labels": []}
+        
+    with torch.no_grad():
+    
+        eps = torch.randn(size=(num_samples, la.n_params), device=device)
+        samples = la.mean.reshape(1, la.n_params) + temp * la.posterior_scale.reshape(1, la.n_params) * eps
+    
+        for images, labels in dataloader:
 
-            logits = model(images)
-            losses = criterion(logits, labels, params, len(dataloader.dataset))
-            losses["loss"].backward()
+            batch_size = len(images)
 
-            for key, value in losses.items():
-                metrics[key] = metrics.get(key, 0.0) + (batch_size / dataset_size) * (1 / num_samples) * value.item()
+            if device.type == "cuda":
+                images, labels = images.to(device), labels.to(device)
+
+            sample_probs = []
+            for sample in samples:
+
+                torch.nn.utils.vector_to_parameters(sample, model.parameters())
+                logits = model(images)
+                probs = torch.nn.functional.softmax(logits, dim=-1)
+                sample_probs.append(probs.detach().cpu().numpy())
+                
+            metrics["probs"].append(np.stack(sample_probs, axis=1))
+            metrics["labels"].append(labels.detach().cpu().numpy())
+            
+        torch.nn.utils.vector_to_parameters(la.mean, model.parameters())
+            
+        metrics["probs"] = np.concatenate(metrics["probs"], axis=0)
+        metrics["labels"] = np.concatenate(metrics["labels"], axis=0)
+        
+        dataset_size, num_samples, num_classes = metrics["probs"].shape
+        bma_preds = metrics["probs"].mean(axis=1).argmax(axis=-1)
+        metrics["bma_acc"] = np.mean([(bma_preds[metrics["labels"] == c] == c).mean() for c in range(num_classes)])
+        probs = metrics["probs"][np.arange(dataset_size),:,metrics["labels"]]
+        log_probs = np.sum(np.log(probs), axis=1)
+        metrics["clml"] = scipy.special.logsumexp(log_probs) - np.log(len(log_probs))
     
     return metrics
