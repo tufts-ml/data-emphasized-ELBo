@@ -215,7 +215,7 @@ class VariationalCNBlock(torch.nn.Module):
     def forward(self, x):
         if self.training or self.use_posterior:
             variational_params = self._variational_params()
-            variational_layer_scale = self._unflatten(variational_params)
+            variational_layer_scale, = self._unflatten(variational_params)
             result = variational_layer_scale * self.layer.block(x)
             result = self.layer.stochastic_depth(result)
             result += x

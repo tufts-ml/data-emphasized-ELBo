@@ -113,12 +113,12 @@ if __name__=="__main__":
         # NOTE: In this loss function $\alpha, \beta$ are equivalent to Li et al. (2018).
         criterion = losses.TransferLearningLoss(model, likelihood, backbone_prior, classifier_prior)
     elif args.method == "ELBO":
-        model.raw_sigma = torch.nn.Parameter(utils.inv_softplus(torch.tensor(1e-4, device=device)))
-        utils.add_variational_layers(model, model.raw_sigma)
+        #model.raw_sigma = torch.nn.Parameter(utils.inv_softplus(torch.tensor(1e-4, device=device)))
+        #utils.add_variational_layers(model, model.raw_sigma)
         # Note: A diagonal covariance works well if the prior variance is layer-wise or diagonal.
-        #utils.add_variational_layers(model, None)
-        #model.raw_sigma = torch.nn.Parameter(utils.inv_softplus(1e-4 * torch.ones_like(utils.flatten_params(model))))
-        #utils.assign_diag_raw_sigma(model, model.raw_sigma)
+        utils.add_variational_layers(model, None)
+        model.raw_sigma = torch.nn.Parameter(utils.inv_softplus(1e-4 * torch.ones_like(utils.flatten_params(model))))
+        utils.assign_diag_raw_sigma(model, model.raw_sigma)
         model.use_posterior = types.MethodType(utils.use_posterior, model)
         criterion = losses.TransferLearningTemperedELBOLoss(model, likelihood, backbone_prior, classifier_prior, kappa=args.kappa)
             
