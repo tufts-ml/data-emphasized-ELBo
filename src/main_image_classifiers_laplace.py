@@ -138,6 +138,8 @@ if __name__=="__main__":
             backbone_prior.prior_variance = 1 / la.prior_precision[0]
             classifier_prior.prior_variance = 1 / la.prior_precision[1]
                         
+        if device.type == "cuda":
+            torch.cuda.synchronize()
         train_epoch_end_time = time.time()
         
         #train_metrics = utils.evaluate(model, criterion, train_dataloader, num_samples=1)

@@ -261,6 +261,8 @@ if __name__=="__main__":
     for epoch in range(epochs):
         train_epoch_start_time = time.time()
         augmented_train_metrics = train_one_epoch(model, criterion, optimizer, augmented_train_loader, lr_scheduler=lr_scheduler, num_samples=1)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
         train_epoch_end_time = time.time()
         #train_metrics = evaluate(model, criterion, train_loader, num_classes=num_classes)
         train_metrics = augmented_train_metrics

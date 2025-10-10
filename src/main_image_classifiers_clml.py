@@ -30,7 +30,7 @@ if __name__=="__main__":
     parser.add_argument("--la_batch_size", default=128, help="Batch size (default: 128)", type=int)
     parser.add_argument("--lr_0", default=0.1, help="Initial learning rate (default: 0.1)", type=float)
     parser.add_argument("--method", default="CLML", help="Method (default: \"CLML\")", type=str)
-    parser.add_argument("--model", default="L2-SP", help="Model (default: \"L2-SP\")", type=str)
+    parser.add_argument("--model", default="l2-sp", help="Model (default: \"L2-SP\")", type=str)
     parser.add_argument("--model_arch", default="ResNet-50", help="Model architecture (default: \"ResNet-50\")", type=str)
     parser.add_argument("--model_name", default="test", help="Model name (default: \"test\")", type=str)
     parser.add_argument("--n", default=1000, help="Number of training samples (default: 1000)", type=int)
@@ -88,13 +88,13 @@ if __name__=="__main__":
     print(device)
     model.to(device)
                 
-    assert args.model in ["L2-zero", "L2-SP"]
-    if args.model == "L2-zero":
+    assert args.model in ["l2-zero", "l2-sp"]
+    if args.model == "l2-zero":
         backbone_prior_params = torch.load(f"{args.prior_dir}/{args.prior_type}_mean.pt", map_location=device, weights_only=False)
         backbone_prior_params = torch.zeros_like(backbone_prior_params)
         backbone_prior = priors.NoPrior(num_params=len(backbone_prior_params)) if args.alpha == 0.0 else priors.IsotropicGaussianPrior(num_params=len(backbone_prior_params), prior_variance=1/args.alpha)
         classifier_prior = priors.NoPrior(num_params=num_classifier_params) if args.beta == 0.0 else priors.IsotropicGaussianPrior(num_params=num_classifier_params, prior_variance=1/args.beta)
-    elif args.model == "L2-SP":
+    elif args.model == "l2-sp":
         backbone_prior_params = torch.load(f"{args.prior_dir}/{args.prior_type}_mean.pt", map_location=device, weights_only=False)
         backbone_prior = priors.NoPrior(num_params=len(backbone_prior_params)) if args.alpha == 0.0 else priors.IsotropicGaussianPrior(prior_params=backbone_prior_params, prior_variance=1/args.alpha)
         classifier_prior = priors.NoPrior(num_params=num_classifier_params) if args.beta == 0.0 else priors.IsotropicGaussianPrior(num_params=num_classifier_params, prior_variance=1/args.beta)
@@ -120,6 +120,8 @@ if __name__=="__main__":
     for epoch in range(epochs):        
         train_epoch_start_time = time.time()
         augmented_train_metrics = utils.train_one_epoch(model, criterion, optimizer, augmented_train_dataloader, lr_scheduler=lr_scheduler, num_samples=1)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
         train_epoch_end_time = time.time()
         #train_metrics = utils.evaluate(model, criterion, train_dataloader, num_samples=1)
         train_metrics = augmented_train_metrics
