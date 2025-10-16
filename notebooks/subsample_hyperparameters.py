@@ -28,30 +28,30 @@ def subsample_hyperparameters(ns, retrained_df, tuned_df, random_states=[1001, 2
     return dictionary
 
 if __name__=='__main__':
-    #tuned_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_CIFAR-10_ConvNeXt_Tiny.csv')
-    #retrained_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_CIFAR-10_ConvNeXt_Tiny.csv')
+    #tuned_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/tuned_CIFAR-10_ConvNeXt_Tiny.csv')
+    #retrained_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/retrained_CIFAR-10_ConvNeXt_Tiny.csv')
     #cifar10_dictionary = subsample_hyperparameters([100, 1000, 10000, 50000], retrained_df, tuned_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt_Tiny_dictionary.npy', cifar10_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt_Tiny_dictionary.npy', cifar10_dictionary)
     
-    tuned_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_CIFAR-10_ConvNeXt-Tiny_CLML2.csv')
-    retrained_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_CIFAR-10_ConvNeXt-Tiny_CLML2.csv')
+    tuned_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/tuned_CIFAR-10_ConvNeXt-Tiny_CLML2.csv')
+    retrained_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/retrained_CIFAR-10_ConvNeXt-Tiny_CLML2.csv')
     cifar10_dictionary = subsample_hyperparameters([1000], retrained_df, tuned_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_NLL_dictionary.npy', cifar10_dictionary)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_CLML_dictionary.npy', cifar10_dictionary)
-    np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_CLML_BMA_dictionary.npy', cifar10_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_NLL_dictionary.npy', cifar10_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_CLML_dictionary.npy', cifar10_dictionary)
+    np.save('{home_dir}/data-emphasized-ELBo/notebooks/CIFAR-10_ConvNeXt-Tiny_CLML_BMA_dictionary.npy', cifar10_dictionary)
     
-    #tuned_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
-    #retrained_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
+    #tuned_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/tuned_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
+    #retrained_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/retrained_Oxford-IIIT_Pet_ConvNeXt_Tiny.csv')
     #oxfordiiit_pet_dictionary = subsample_hyperparameters([370, 3441], retrained_df, tuned_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Oxford-IIIT_Pet_ConvNeXt_Tiny_dictionary.npy', oxfordiiit_pet_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/Oxford-IIIT_Pet_ConvNeXt_Tiny_dictionary.npy', oxfordiiit_pet_dictionary)
     
-    #tuned_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_Flowers_102_ConvNeXt_Tiny.csv')
-    #retrained_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_Flowers_102_ConvNeXt_Tiny.csv')
+    #tuned_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/tuned_Flowers_102_ConvNeXt_Tiny.csv')
+    #retrained_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/retrained_Flowers_102_ConvNeXt_Tiny.csv')
     #flowers_102_dictionary = subsample_hyperparameters([510, 1020], retrained_df, tuned_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/Flowers_102_ConvNeXt_Tiny_dictionary.npy', flowers_102_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/Flowers_102_ConvNeXt_Tiny_dictionary.npy', flowers_102_dictionary)
     
-    #tuned_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/tuned_AG_News_BERT-base.csv')
-    #retrained_df = pd.read_csv('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/retrained_AG_News_BERT-base.csv')
+    #tuned_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/tuned_AG_News_BERT-base.csv')
+    #retrained_df = pd.read_csv('{home_dir}/data-emphasized-ELBo/notebooks/retrained_AG_News_BERT-base.csv')
     #ag_news_dictionary = subsample_hyperparameters([40, 400, 4000, 40000, 120000], retrained_df, tuned_df)
-    #np.save('/cluster/tufts/hugheslab/eharve06/data-emphasized-ELBo/notebooks/AG_News_BERT-base_dictionary4.npy', ag_news_dictionary)
+    #np.save('{home_dir}/data-emphasized-ELBo/notebooks/AG_News_BERT-base_dictionary4.npy', ag_news_dictionary)
     
